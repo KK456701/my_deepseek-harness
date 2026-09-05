@@ -776,3 +776,49 @@ describe('llm.discoverModels', () => {
     expect(error.message).toContain('no model discovery is registered')
   })
 })
+
+describe('llm.balance', () => {
+  it('forwards a namespace balance query and returns the adapter lines', async () => {
+    const ctx = await harness()
+    const seen: unknown[] = []
+    ctx.llm.registerBalanceQuery('llm-deepseek', (query) => {
+      seen.push(query.signal)
+      return Promise.resolve([
+        { currency: 'CNY', total: '110.00', granted: '10.00', toppedUp: '100.00' },
+        { currency: 'USD', total: '5.00' },
+      ])
+    })
+    const api = createApiProxy(ctx, DEFAULTS)
+
+    const value = expectOk(await api.llm.balance(request({ settingsNs: 'llm-deepseek' })))
+
+    expect(value.balances).toEqual([
+      { currency: 'CNY', total: '110.00', granted: '10.00', toppedUp: '100.00' },
+      { currency: 'USD', total: '5.00' },
+    ])
+    expect(seen).toEqual([undefined])
+  })
+
+  it('reports a failed query as balance-unavailable, naming no credential', async () => {
+    const ctx = await harness()
+    ctx.llm.registerBalanceQuery('llm-deepseek', () =>
+      Promise.reject(new Error('DeepSeek balance error (HTTP 401); check the API key')))
+    const api = createApiProxy(ctx, DEFAULTS)
+
+    const error = expectErr(await api.llm.balance(request({ settingsNs: 'llm-deepseek' })))
+
+    expect(error.code).toBe('balance-unavailable')
+    expect(error.message).toContain('check the API key')
+    expect(error.details).toEqual({ settingsNs: 'llm-deepseek' })
+  })
+
+  it('reports a namespace with no registered balance query', async () => {
+    const ctx = await harness()
+    const api = createApiProxy(ctx, DEFAULTS)
+
+    const error = expectErr(await api.llm.balance(request({ settingsNs: 'llm-deepseek' })))
+
+    expect(error.code).toBe('balance-unavailable')
+    expect(error.message).toContain('no balance query is registered')
+  })
+})

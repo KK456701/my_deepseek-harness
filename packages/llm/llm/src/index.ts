@@ -9,6 +9,8 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import type {
   GenerateOptions,
+  LlmAccountBalance,
+  LlmBalanceRequest,
   LlmConfigurableProvider,
   LlmDiscoveredModel,
   LlmFailure,
@@ -288,6 +290,10 @@ export class LlmRuntime extends Service {
     string,
     (request: LlmModelDiscoveryRequest) => Promise<readonly LlmDiscoveredModel[]>
   >()
+  private balanceQueries = new Map<
+    string,
+    (request: LlmBalanceRequest) => Promise<readonly LlmAccountBalance[]>
+  >()
 
   constructor(ctx: Context) {
     super(ctx, 'llm')
@@ -556,6 +562,70 @@ export class LlmRuntime extends Service {
       })
     }
     return models
+  }
+
+  /**
+   * Offer to query one provider account's balance on behalf of the settings
+   * namespace this plugin owns. The namespace is the key because that is what
+   * a configuration surface already holds from the configurable-provider
+   * directory, and the adapter resolves its own endpoint and credential from
+   * its registered configuration. Disposed with the fiber.
+   * @param settingsNs - the namespace whose profiles this query serves.
+   * @param query - resolves the provider's account balance; must honor `request.signal`.
+   * @returns the disposer that withdraws the offer.
+   */
+  registerBalanceQuery(
+    settingsNs: string,
+    query: (request: LlmBalanceRequest) => Promise<readonly LlmAccountBalance[]>,
+  ): () => void {
+    const dispose = this.ctx.effect(function* (this: LlmRuntime) {
+      if (settingsNs.length === 0) {
+        throw new LlmError('balance query needs a non-empty settings namespace', 'INVALID_BALANCE_QUERY')
+      }
+      if (this.balanceQueries.has(settingsNs)) {
+        throw new LlmError(`balance query for "${settingsNs}" is already registered`, 'DUPLICATE_BALANCE_QUERY')
+      }
+      this.balanceQueries.set(settingsNs, query)
+      yield () => {
+        this.balanceQueries.delete(settingsNs)
+      }
+    }.bind(this), 'llm.registerBalanceQuery()')
+    return () => void dispose()
+  }
+
+  /**
+   * Query one registered provider namespace's account balance. The adapter
+   * resolves its endpoint and credential from its own configuration; the
+   * request carries only caller cancellation.
+   * @param settingsNs - namespace whose registered balance query serves this call.
+   * @param request - caller cancellation (endpoint and credential are adapter-owned).
+   * @returns validated balance lines, in provider order.
+   */
+  async queryBalance(
+    settingsNs: string,
+    request: LlmBalanceRequest = {},
+  ): Promise<LlmAccountBalance[]> {
+    const query = this.balanceQueries.get(settingsNs)
+    if (query === undefined) {
+      throw new LlmError(`no balance query is registered for "${settingsNs}"`, 'NO_BALANCE_QUERY')
+    }
+    const reported = await query(request)
+    const balances: LlmAccountBalance[] = []
+    for (const line of reported) {
+      if (typeof line.currency !== 'string' || line.currency.length === 0) {
+        throw new LlmError(`balance query for "${settingsNs}" reported a line with no currency`, 'INVALID_BALANCE')
+      }
+      if (typeof line.total !== 'string' || line.total.length === 0) {
+        throw new LlmError(`balance query for "${settingsNs}" reported a line with no total`, 'INVALID_BALANCE')
+      }
+      balances.push({
+        currency: line.currency,
+        total: line.total,
+        ...line.granted === undefined ? {} : { granted: line.granted },
+        ...line.toppedUp === undefined ? {} : { toppedUp: line.toppedUp },
+      })
+    }
+    return balances
   }
 
   /**

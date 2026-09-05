@@ -35,6 +35,7 @@ async function seedReadOnlyParent(root: string, cwd: string): Promise<void> {
     version: SESSION_FORMAT_VERSION,
     id: sessionId,
     createdAt: 1,
+    purpose: 'interactive',
     cwd,
     delegationDepth: 0,
   }

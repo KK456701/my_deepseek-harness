@@ -8,6 +8,7 @@
     "src"
   ],
   "references": [
+    { "path": "../codex-structured-runner" },
     {
       "path": "../../../vendor/cosmokit"
     },

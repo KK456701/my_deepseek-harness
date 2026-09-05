@@ -65,6 +65,7 @@ function bench(options: {
   })
   const childHeader = {
     version: 0, id: CHILD, createdAt: 1, cwd: '/proj', parentSession: options.historyParent ?? PARENT,
+    purpose: 'subagent',
   } satisfies SessionHeader
   const childEvents = [
     { type: 'user/message', seq: 0, time: 1, data: { content: [{ type: 'text', text: 'work' }], source: { kind: 'user' } } },

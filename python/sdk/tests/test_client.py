@@ -42,6 +42,14 @@ for line in sys.stdin:
         print(json.dumps({"jsonrpc": "2.0", "method": "session.event", "params": {"sessionId": params["sessionId"], "event": {"type": "agent/inbox/spliced", "data": {"target": "next-turn", "start": 0, "inserted": [{"id": "message-1"}]}}}}), flush=True)
         print(json.dumps({"jsonrpc": "2.0", "method": "session.status", "params": {"sessionId": params["sessionId"], "status": "running"}}), flush=True)
         print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"messageId": "message-1"}}), flush=True)
+        print(json.dumps({"jsonrpc": "2.0", "method": "session.event", "params": {
+            "sessionId": params["sessionId"], "event": {"type": "task-execution/result", "data": {
+                "incarnation": "fixture", "callId": "inspect", "isError": False,
+                "started": True, "mutationSeq": 1, "files": []}}}}), flush=True)
+        print(json.dumps({"jsonrpc": "2.0", "method": "session.event", "params": {
+            "sessionId": params["sessionId"], "event": {"type": "task-contract/model-assessment", "data": {
+                "callId": "review", "status": "validated", "result": {"action": "verify", "requirements": [{
+                    "work": "needs-verification", "answerEvidence": [{"paragraphId": "p1", "quote": "缺少当前证据"}]}]}}}}}), flush=True)
         print(json.dumps({
             "jsonrpc": "2.0",
             "method": "session.event",
@@ -88,7 +96,7 @@ for line in sys.stdin:
     elif method == "shutdown":
         print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {}}), flush=True)
         break
-""".strip()
+""".strip(), encoding="utf-8"
     )
 
     with DeepSeekHarness(
@@ -108,6 +116,11 @@ for line in sys.stdin:
         result = harness.run("say hello", session_id="main")
 
     assert result.final_response == "hello from runtime"
+    receipt = next(event["data"] for event in result.events if event["type"] == "task-execution/result")
+    assert receipt == {"incarnation": "fixture", "callId": "inspect", "isError": False, "started": True, "mutationSeq": 1, "files": []}
+    assessment = next(event["data"] for event in result.events if event["type"] == "task-contract/model-assessment")
+    assert assessment["result"]["action"] == "verify"
+    assert assessment["result"]["requirements"][0]["answerEvidence"] == [{"paragraphId": "p1", "quote": "缺少当前证据"}]
     assert result.finish_reason == "max-tokens"
     assert result.events[-1]["type"] == "turn/end"
     dumped_env = json.loads(env_dump.read_text())

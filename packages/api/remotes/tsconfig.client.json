@@ -49,6 +49,12 @@
       "path": "../../llm/llm"
     },
     {
+      "path": "../../memory/memory"
+    },
+    {
+      "path": "../../memory/memory-remote"
+    },
+    {
       "path": "../../preset/agent-presets"
     },
     {

@@ -7,6 +7,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { CodexStructuredProvider } from './structured.ts'
 import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import {
@@ -132,4 +133,9 @@ export function apply(ctx: Context, config: Config): void {
     ctx,
     resolved,
   ))
+  ctx.plugin(CodexStructuredProvider, {
+    env: resolved.env,
+    disposeGraceMs: resolved.disposeGraceMs,
+    spawn: spec => ctx.subprocess.spawn(spec),
+  })
 }

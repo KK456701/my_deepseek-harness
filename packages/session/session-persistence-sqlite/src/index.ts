@@ -1,6 +1,6 @@
 /**
  * Opt-in SQLite persistence provider. Logical sessions remain unchanged;
- * the physical backend packs eligible chunk runs into schema-17 rows.
+ * the physical backend packs eligible chunk runs into schema-18 rows.
  * @module @deepseek-ai/dsh-session-persistence-sqlite
  */
 
@@ -79,6 +79,7 @@ export class SqliteSessionPersistence extends SessionPersistence {
       busyTimeoutMs: config.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS,
     })
     this.coordinator = new PersistenceCoordinator(this.ctx, this.store, {
+      acceptedPurposes: ['interactive', 'subagent'],
       preparedSessionCacheSize,
       writeBatchMaxDelayMs,
     })

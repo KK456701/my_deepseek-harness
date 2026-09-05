@@ -189,7 +189,7 @@ function navigableMembers(
       const summary = sessions.byId[member.childId]
       if (member.status === 'running'
         && ordinary.has(member.childId)
-        && summary?.origin === 'subagent'
+        && summary?.purpose === 'subagent'
         && summary.parentId === parentId
         && summary.running) {
         result.push(member.childId)

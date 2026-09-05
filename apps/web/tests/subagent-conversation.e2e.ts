@@ -119,7 +119,7 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
       createdAt: oneShotAt,
       cwd: scaffold.workspaceCwd,
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
       delegationDepth: 1,
     })
     await scaffold.ctx.sessionPersistence.append(oneShotId, [
@@ -163,7 +163,7 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
       createdAt: authoredAt,
       cwd: scaffold.workspaceCwd,
       parentSession: childId,
-      origin: 'subagent',
+      purpose: 'subagent',
       delegationDepth: 2,
     })
     await scaffold.ctx.sessionPersistence.append(grandchildId, [

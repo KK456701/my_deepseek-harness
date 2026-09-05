@@ -11,7 +11,7 @@ import type { ApprovalOutcome, ApprovalRequestId } from '@deepseek-ai/dsh-user-a
 import type { Message } from '@deepseek-ai/dsh-llm/types'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { CallId } from '@deepseek-ai/dsh-llm/brand'
-import type { JsonValue, SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
+import type { JsonValue, SessionEvent, SessionId, SessionPurpose } from '@deepseek-ai/dsh-session/types'
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools/presentation'
 import type { RpcError, RpcId, RpcRequest } from './rpc.ts'
 import type { JobView } from './jobs.ts'
@@ -109,7 +109,7 @@ export type MuxFrame =
 
 /**
  * Host stream frames. session-added carries the lineage anchor, product
- * origin, project cwd, and blank bit (the list-summary fields a client cannot
+ * purpose, project cwd, and blank bit (the list-summary fields a client cannot
  * wait for a refresh to learn); the frame fires at session/created, so blank is
  * constantly true — clients flip it on the session's first
  * `host/session-status(running:true)` (a blank session never runs), and a
@@ -130,7 +130,7 @@ export type HostFrame =
     sessionId: SessionId
     blank: boolean
     parentSessionId?: SessionId
-    origin?: 'subagent'
+    purpose: SessionPurpose
     cwd?: string
     agentPreset?: string
   }

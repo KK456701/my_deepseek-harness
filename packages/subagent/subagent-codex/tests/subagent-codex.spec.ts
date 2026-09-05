@@ -30,6 +30,7 @@ import {
   type CodexRunSpec,
 } from '../src/run.ts'
 import { CodexAppServerWire } from '../src/wire.ts'
+import { CodexStructuredProvider } from '../src/structured.ts'
 
 const { hostStderrWrite } = vi.hoisted(() => ({
   hostStderrWrite: {
@@ -65,6 +66,59 @@ vi.mock('node:fs', async (importOriginal) => {
 
 type JsonObject = Record<string, unknown>
 
+describe('structured Codex calls', () => {
+  it.each(['high', 'max'])('freezes per-call %s configuration and accepts only final JSON', async (effort) => {
+    const ctx = new Context()
+    const child = fakeChild()
+    const spawn = vi.fn(() => child.handle)
+    await ctx.plugin(CodexStructuredProvider, { ...runSpec(child), spawn })
+    const request = { purpose: 'memory-phase1' as const, model: 'gpt-5.6-sol', reasoningEffort: effort,
+      prompt: 'Process evidence', outputSchema: { type: 'object' }, maxResultBytes: 1024 }
+    const preparing = ctx.codexStructuredRunner.prepareCall(request, new AbortController().signal)
+    request.prompt = 'mutated caller input'
+    const init = await child.peer.nextMethod('initialize')
+    child.peer.respond(init, {})
+    child.peer.respond(await child.peer.nextMethod('config/read'), { config: { mcp_servers: { sample: { command: 'unused' } } } })
+    const prepared = await preparing
+    expect(prepared.exactRequest).toMatchObject({
+      thread: { config: { mcp_servers: { sample: { enabled: false } }, notify: [] } },
+    })
+    expect((prepared.exactRequest as JsonObject).argv).toEqual(expect.arrayContaining(['features.plugins=false', 'notify=[]']))
+    const result = prepared.dispatch(new AbortController().signal)
+    const start = await child.peer.nextMethod('thread/start')
+    expect(start.params).toMatchObject({ model: 'gpt-5.6-sol', approvalPolicy: 'never', sandbox: 'read-only' })
+    child.peer.respond(start, { thread: { id: 'thread-1', ephemeral: true } })
+    const turn = await child.peer.nextMethod('turn/start')
+    expect(turn.params).toMatchObject({ model: 'gpt-5.6-sol', effort, outputSchema: { type: 'object' }, input: [{ text: 'Process evidence' }] })
+    child.peer.respond(turn, { turn: { id: 'turn-1' } })
+    child.peer.send(agentMessage('{"ok":true}', 'final_answer'), { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed', error: null } } })
+    await expect(result).resolves.toMatchObject({ value: { ok: true }, finishReason: 'completed' })
+    await prepared.dispose()
+    await ctx.fiber.dispose()
+    expect(child.terminate).toHaveBeenCalled()
+  })
+
+  it.each(['tool', 'overflow', 'non-json'])('rejects %s without retaining tool payloads', async (mode) => {
+    const ctx = new Context()
+    const child = fakeChild()
+    await ctx.plugin(CodexStructuredProvider, runSpec(child))
+    const preparing = ctx.codexStructuredRunner.prepareCall({ purpose: 'memory-phase2', model: 'gpt-5.6-sol', reasoningEffort: 'max', prompt: 'Evidence', outputSchema: { type: 'object' }, maxResultBytes: 20 }, new AbortController().signal)
+    child.peer.respond(await child.peer.nextMethod('initialize'), {})
+    child.peer.respond(await child.peer.nextMethod('config/read'), { config: {} })
+    const prepared = await preparing
+    const result = prepared.dispatch(new AbortController().signal)
+    child.peer.respond(await child.peer.nextMethod('thread/start'), { thread: { id: 'thread-1', ephemeral: true } })
+    child.peer.respond(await child.peer.nextMethod('turn/start'), { turn: { id: 'turn-1' } })
+    if (mode === 'tool') child.peer.send({ method: 'item/started', params: { threadId: 'thread-1', turnId: 'turn-1', item: { type: 'commandExecution', command: 'private-payload' } } })
+    else child.peer.send(agentMessage(mode === 'overflow' ? 'x'.repeat(21) : 'not JSON', 'final_answer'), { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed', error: null } } })
+    const output = await result
+    expect(output.value).toBeNull()
+    expect(output.finishReason).toBe(mode === 'tool' ? 'unexpected-tool-use' : mode === 'overflow' ? 'result-overflow' : 'failed')
+    expect(JSON.stringify(output)).not.toContain('private-payload')
+    await prepared.dispose()
+    await ctx.fiber.dispose()
+  })
+})
 const CODEX_VERSION = '0.147.0'
 const CODEX_PLATFORM_PACKAGES = [
   '@openai/codex-darwin-arm64',

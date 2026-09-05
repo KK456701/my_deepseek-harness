@@ -21,6 +21,8 @@
 - `ctx.llm.registerModelDiscovery(settingsNs: string, discover): () => void` 为本插件拥有的 settings namespace 提供查询提供方端点的能力。每个 namespace 只能有一个（`INVALID_DISCOVERY`/`DUPLICATE_DISCOVERY`），并随调用 fiber dispose。
 - `ctx.llm.listModelDiscoveryNamespaces(): string[]` 列出可以询问端点的 namespace，让界面只在可用之处提供该动作。
 - `ctx.llm.discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest): Promise<LlmDiscoveredModel[]>` 询问某个端点它公布了哪些模型。
+- `ctx.llm.registerBalanceQuery(settingsNs: string, query): () => void` 为本插件拥有的 settings namespace 提供查询某个提供方账户余额的能力。适配器从自身已注册的配置解析端点和凭据，请求只携带调用方的取消信号。每个 namespace 只能有一个（`INVALID_BALANCE_QUERY`/`DUPLICATE_BALANCE_QUERY`），并随调用 fiber dispose。
+- `ctx.llm.queryBalance(settingsNs: string, request?: LlmBalanceRequest): Promise<LlmAccountBalance[]>` 查询某个已注册提供方 namespace 的账户余额。缺少货币或总额的行以 `INVALID_BALANCE` 失败；无人服务的 namespace 以 `NO_BALANCE_QUERY` 失败。
 - `ctx.llm.providerRetryPolicy(provider: string): ResolvedRetryPolicy` 返回注册时捕获的提供方自身的重试策略，并解析 normal 默认值。
 - `ctx.llm.listModels(provider: string): Promise<LlmModelInfo[]>` 发现某个已注册提供方当前公布的模型。
 - `ctx.llm.resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>` 从拥有该精确路由的适配器中，解析并校验确切模型身份，以及可用上下文、输出默认值和推理（reasoning）元数据；异步适配器可选地支持取消。
@@ -86,6 +88,10 @@
 ### 真实适配器
 
 两个适配器使用不同内部机制实现 `LlmAdapter`：[`@deepseek-ai/dsh-llm-deepseek`](../llm-deepseek) 针对 `deepseek-official` 路由使用直接 fetch 加 `eventsource-parser` SSE（Server-Sent Events）分帧，[`@deepseek-ai/dsh-llm-pi-ai`](../llm-pi-ai) 则通过 `@earendil-works/pi-ai` 动态解析已配置提供方／模型对。两者都遵循 `types.ts` 中的 `StreamChunk` 约定：usage 先于 finish，工具参数保持原始字符串。适配器实现在内部可以抛出异常或发出失败 finish；`LlmRuntime` 会将两者都暴露为终止失败 finish。适配器理由见[双 LLM 适配器](../../../.agents/notes/implemented/architecture/2026-06-13-twin-llm-adapters.md)，服务边界见[终止失败决策](../../../.agents/notes/implemented/architecture/2026-07-29-terminal-llm-stream-failures.md)。
+
+## 辅助请求归因
+
+`GenerateOptions.purpose` 区分需求提取、最终／Shadow 审查、进展观察、任务授权与普通 Worker 请求。可选 `audit` 携带模型不可见的调用身份及重试序号；适配器不得把这些字段变成提示词正文。调用方将实际用量与字节估算分开保存，推理 token 计入输出而非额外相加。
 
 ## 模型体验
 

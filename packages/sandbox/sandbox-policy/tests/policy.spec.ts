@@ -26,6 +26,7 @@ function session(id: string, cwd?: string): Session {
     version: 0,
     id: sessionId,
     createdAt: 0,
+    purpose: 'interactive',
     ...cwd === undefined ? {} : { cwd },
   })
 }

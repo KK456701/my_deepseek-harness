@@ -42,6 +42,7 @@ function header(id: string, cwd: string | undefined, createdAt = 1, parentSessio
     version: SESSION_FORMAT_VERSION,
     id: SessionId(id),
     createdAt,
+    purpose: 'interactive',
     ...cwd === undefined ? {} : { cwd },
     ...parentSession === undefined ? {} : { parentSession },
   }

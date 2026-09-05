@@ -48,6 +48,7 @@ describe('tool-session-query with the real SQLite provider', () => {
       version: SESSION_FORMAT_VERSION,
       id: persisted,
       createdAt: 1,
+      purpose: 'interactive',
       cwd: '/work',
     })
     await ctx.sessionPersistence.append(persisted, [{
@@ -118,6 +119,7 @@ describe('tool-session-query with the real SQLite provider', () => {
       version: SESSION_FORMAT_VERSION,
       id: persisted,
       createdAt: base,
+      purpose: 'interactive',
       cwd: '/work',
     })
     await ctx.sessionPersistence.append(persisted, [

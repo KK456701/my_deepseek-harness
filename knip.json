@@ -40,6 +40,7 @@
     "examples": {
       "entry": [
         "headless-agent/tests/fixtures/cli-mock-llm.ts",
+        "headless-agent/tests/fixtures/memory-seed.ts",
         "headless-agent/tests/fixtures/semantic-checkpoint-agent.ts",
         "headless-agent/tests/fixtures/subagent-diagnostic-agent.ts",
         "headless-agent/tests/fixtures/subagent-inheritance-agent.ts",
@@ -156,6 +157,16 @@
       ]
     },
     "packages/client/ui-primitives": {
+      "entry": [
+        "tests/**/*.spec.tsx"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "tests/**/*.tsx"
+      ]
+    },
+    "packages/client/ui-memory": {
       "entry": [
         "tests/**/*.spec.tsx"
       ],
@@ -620,6 +631,34 @@
     "packages/examples/jsonrpc-demo": {
       "project": [
         "src/**/*.ts"
+      ]
+    },
+    "packages/memory/memory": {
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "packages/memory/memory-pipeline-store": {
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "packages/memory/memory-maintenance": {
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "packages/memory/memory-bundle": {
+      "project": [
+        "src/**/*.ts"
+      ],
+      "ignoreDependencies": [
+        "@deepseek-ai/.+"
+      ]
+    },
+    "packages/memory/memory-remote": {
+      "ignoreDependencies": [
+        "zod"
       ]
     },
     "packages/subagent/subagent-spawn-in-process": {

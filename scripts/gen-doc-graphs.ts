@@ -263,6 +263,36 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns the deterministic fallback, latest-title fold, and sole optional asynchronous provider registration.',
   },
   {
+    key: 'memory',
+    pkg: 'memory',
+    title: 'Profile long-term memory',
+    mode: 'seam',
+    implementations: ['memory-local'],
+    consumers: ['memory-prompt', 'memory-remote'],
+    companions: ['memoryPipelineStore', 'memoryMaintenance'],
+    note: 'Exposes profile controls, immutable generation reads, lexical recall, explicit memory requests, quarantine management, and reset without exposing pipeline state.',
+  },
+  {
+    key: 'memoryPipelineStore',
+    pkg: 'memory-pipeline-store',
+    title: 'Private memory pipeline store',
+    mode: 'seam',
+    implementations: ['memory-local'],
+    consumers: ['memory-scheduler'],
+    companions: ['memory'],
+    note: 'Owns durable claims, leases, audited attempts, staging workspaces, generation validation, fenced publication, recovery, and pruning behind opaque handles.',
+  },
+  {
+    key: 'memoryMaintenance',
+    pkg: 'memory-maintenance',
+    title: 'Memory scheduler lifecycle',
+    mode: 'seam',
+    implementations: ['memory-scheduler'],
+    consumers: ['memory-maintenance-triggers'],
+    companions: ['memoryPipelineStore'],
+    note: 'Coordinates discovery and model work through the private store; triggers only wake or drain the scheduler and never access memory storage.',
+  },
+  {
     key: 'systemPrompt',
     pkg: 'system-prompt',
     title: 'System prompt assembly registry',
@@ -477,6 +507,39 @@ const SERVICE_ROLES: ServiceRole[] = [
     implementations: ['subagent-spawn-in-process', 'subagent-fork-in-process', 'subagent-acp', 'subagent-codex', 'subagent-claude-code', 'subagent-dsh-sdk'],
     consumers: ['tool-subagent', 'tool-subagent-control', 'tool-ralph'],
     note: 'Providers implement transports; the service also owns optional Activation-based continuation orchestration, tool-subagent selects one-shot or continuable delegation, tool-subagent-control delivers follow-ups, and tool-ralph requires one fresh structured-output route.',
+  },
+  {
+    key: 'codexStructuredRunner',
+    pkg: 'codex-structured-runner',
+    title: 'Auditable Codex structured calls',
+    mode: 'seam',
+    implementations: ['subagent-codex'],
+    consumers: ['memory-scheduler'],
+    note: 'The provider prepares an immutable app-server request; the memory scheduler persists it before dispatch and validates the JSON result before applying it.',
+  },
+  {
+    key: 'taskContract',
+    pkg: 'experimental-task-contract',
+    title: 'Versioned current requirements and claimed input',
+    mode: 'core',
+    consumers: ['experimental-final-completeness-gate', 'experimental-progress-integrity-observer', 'experimental-task-execution-control'],
+    note: 'Replays claimed user input, current requirement versions and the latest formal plan approval independently of compaction; validates add, revise and cancel batches before CAS append.',
+  },
+  {
+    key: 'progressIntegrityObserver',
+    pkg: 'experimental-progress-integrity-observer',
+    title: 'Event-triggered progress observation',
+    mode: 'core',
+    consumers: ['experimental-task-execution-control'],
+    note: 'Classifies progress only after exact repeated outcomes, consecutive failures, or unchanged A/B alternation; ordinary Step count never triggers it.',
+  },
+  {
+    key: 'taskExecutionControl',
+    pkg: 'experimental-task-execution-control',
+    title: 'Shared task execution control',
+    mode: 'core',
+    consumers: ['experimental-final-completeness-gate', 'experimental-progress-integrity-observer'],
+    note: 'Coordinates repair budgets, holds, plan-based release and durable dispatch receipts at the existing tool execution point. It makes no model call and Shadow is inert.',
   },
   {
     key: 'agentTeams',
@@ -799,7 +862,7 @@ type CallSiteIndex = Map<ts.SignatureDeclaration | ts.JSDocSignature, ts.CallExp
  * must appear here — the prefilter drops non-members before any branch runs,
  * so a branch for an unlisted name is silently dead.
  */
-const EVENT_API_METHODS = new Set(['on', 'once', 'emit', 'parallel', 'serial', 'waterfall', 'dispatch'])
+const EVENT_API_METHODS = new Set(['on', 'once', 'emit', 'parallel', 'serial', 'waterfall', 'bail', 'dispatch'])
 
 /**
  * Collect event dispatch/listener relations from real cross-file receiver types.
@@ -957,7 +1020,7 @@ export class EventRelationCollector {
             const eventNames = this.eventNamesFromCall(node, receiverKind)
             if (method === 'on' || method === 'once') {
               for (const event of eventNames) this.ensure(event).listeners.add(source.pkg)
-            } else if (method === 'emit' || method === 'parallel' || method === 'serial' || method === 'waterfall') {
+            } else if (method === 'emit' || method === 'parallel' || method === 'serial' || method === 'waterfall' || method === 'bail') {
               for (const event of eventNames) this.addDispatcher(event, source.pkg, method)
             }
           }
@@ -1329,7 +1392,7 @@ function renderToolPipeline(): string {
   const maintenance = 'curated Mermaid flow; exact tool schemas and event signatures live in generated catalogs'
   return [
     ...generatedHeader('Tool Execution Pipeline'),
-    'This graph shows where policy, hooks, sandboxing, filesystem guards, result rewriting, final-outcome observation, and UI rendering run without changing the loop. The `tools/pre-execute` waterfall runs first, monotonic guards run next, and the `tools/execute` and `tools/post-execute` waterfalls follow; the three waterfalls may transform a call. Definition-owned `finalizeContent` and `tools/result` run afterward.',
+    'The `tools/pre-execute` waterfall and monotonic guards determine admission. `tools/execute` wraps dispatch; `tools/dispatch-ready` runs after its asynchronous waits, followed by synchronous cancellation and guard checks immediately before the body. `tools/post-execute`, definition-owned `finalizeContent`, and `tools/result` handle the outcome.',
     '',
     '```mermaid',
     'flowchart TD',
@@ -1341,6 +1404,7 @@ function renderToolPipeline(): string {
     '  denied["denied or approval refused<br/>tool body skipped"]',
     `  approval["${mermaidCode('ctx.approval')} one-shot prompt<br/>absent or unanswerable: deny"]`,
     `  around["${mermaidCode('tools/execute')} waterfall<br/>timeout, retry, metrics (around dispatch)"]`,
+    `  ready["${mermaidCode('tools/dispatch-ready')}<br/>async barrier; then sync cancellation and guard recheck"]`,
     '  toolBody["Registered tool execute() body"]',
     `  fsGate["${mermaidCode('fs/write-intent')} or ${mermaidCode('fs/edit-intent')}<br/>tool-fs mutations only"]`,
     `  owned["Tool-owned session events<br/>${mermaidCode('todo/write')}, ${mermaidCode('fs/observed')}, ${mermaidCode('hook/invoked')}, ${mermaidCode('hook/result')}, ${mermaidCode('tool/code-dispatch')}"]`,
@@ -1359,7 +1423,10 @@ function renderToolPipeline(): string {
     '  guards -->|allow| around',
     '  guards -->|deny| denied',
     '  guards -.->|throw| normalized',
-    '  around --> toolBody',
+    '  around --> ready',
+    '  ready -->|allowed| toolBody',
+    '  ready -->|denied| denied',
+    '  ready -.->|throw| normalized',
     '  pre -->|deny| denied',
     '  pre -->|ask| approval',
     '  approval -->|allowed-once| guards',

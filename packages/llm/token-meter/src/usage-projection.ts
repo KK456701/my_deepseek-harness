@@ -110,6 +110,12 @@ ProjectionDefinition<'tokenUsage', TokenUsageState> = {
   schema: projectionSchema,
   init: () => ({ totals: zeroBuckets(), last: null }),
   apply: (state, event) => {
+    if (event.type === 'llm/audited-call' && event.data.usage !== undefined) {
+      return {
+        totals: addReplacing(state.totals, undefined, bucketsFrom(event.data.usage)),
+        last: state.last,
+      }
+    }
     let turn: number
     let step: number
     let usage: TokenUsage
@@ -136,7 +142,7 @@ ProjectionDefinition<'tokenUsage', TokenUsageState> = {
     }
   },
   view: state => state.totals,
-  stateVersion: 1,
+  stateVersion: 2,
 }
 
 /**

@@ -17,11 +17,16 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
+import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { InputTriggerService } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ClientSessionContext, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { apply, inject } from '../src/client/index.ts'
 import { SkillRow as SkillToolRow } from '../src/client/SkillRow.tsx'
+import {
+  SkillSettingsSection,
+  type SkillSettingsSectionInjected,
+} from '../src/client/SkillSettingsSection.tsx'
 
 type SkillRow = { name: string; description: string; whenToUse?: string; modelInvocable?: boolean }
 type ListResult =
@@ -44,7 +49,10 @@ function providePresentation(ctx: Context): PresentationCapture {
   const slots = new SlotRegistry(ctx)
   slots.register({
     name: 'root',
-    children: { 'tool.call.toolview': { kind: 'keyed', scope: 'session' } },
+    children: {
+      'tool.call.toolview': { kind: 'keyed', scope: 'session' },
+      'settings.section': { kind: 'list', scope: 'root' },
+    },
   } as never, () => null)
   const capture: PresentationCapture = {
     slots,
@@ -70,6 +78,7 @@ async function bench(list: ListFn, addressed?: SessionId, invoke?: InvokeFn) {
   const defaultInvoke: InvokeFn = () => Promise.resolve({ result: { ok: true as const, value: { accepted: true as const } } })
   ctx.provide('connection', { api: { skills: { list, invoke: invoke ?? defaultInvoke } } })
   ctx.provide('sessions', {
+    list: { getSnapshot: () => ({ current: sid('s1') }) },
     subagentAddress: (id: SessionId) => id === addressed
       ? { parentSessionId: sid('parent'), childSessionId: id, mode: 'continuable' as const }
       : undefined,
@@ -114,7 +123,10 @@ describe('apply', () => {
     const ctx = new Context()
     ctx.provide('inputTriggers', { registerSource: () => () => {} })
     ctx.provide('connection', { api: { skills: { list: listOk(CATALOG) } } })
-    ctx.provide('sessions', { subagentAddress: () => undefined })
+    ctx.provide('sessions', {
+      list: { getSnapshot: () => ({ current: sid('s1') }) },
+      subagentAddress: () => undefined,
+    })
     new TestRemote(ctx)
     const presentation = providePresentation(ctx)
     await ctx.plugin({ inject: [...inject], apply }).await()
@@ -122,6 +134,13 @@ describe('apply', () => {
     expect(entry?.options).toMatchObject({ key: 'skill' })
     expect(entry?.locale).toBe('skill')
     expect(entry?.component).toBe(SkillToolRow)
+    const settingsEntry = presentation.slots.entries('settings.section')[0]!
+    expect(settingsEntry.component).toBe(SkillSettingsSection)
+    expect(settingsEntry.options).toMatchObject({ id: 'skills', order: 17 })
+    expect(settingsEntry.locale).toBe('skill')
+    expect(resolveSlotLabel(settingsEntry.options.label)).toBe('settings.nav')
+    const settings = (settingsEntry.inject as unknown as () => SkillSettingsSectionInjected)()
+    await expect(settings.list()).resolves.toEqual(CATALOG)
     expect(presentation.dictionaries).toEqual([{
       namespace: 'skill', dictionaries: {
         zh: {
@@ -130,6 +149,22 @@ describe('apply', () => {
           'row.stopped': 'skill 加载已中止',
           'row.instructions': '说明',
           'menu.userOnly': '仅用户',
+          'settings.nav': 'Skill',
+          'settings.title': 'Skill',
+          'settings.intro': '查看当前会话可用的 Skill。输入 /名称 可在对话中调用。',
+          'settings.loading': '正在读取 Skill…',
+          'settings.error': 'Skill 列表读取失败。',
+          'settings.retry': '重试',
+          'settings.noSession': '请先打开一个会话，再查看它可用的 Skill。',
+          'settings.searchLabel': '搜索 Skill',
+          'settings.searchPlaceholder': '搜索名称、简介或适用场景',
+          'settings.catalog': '当前 Skill',
+          'settings.count': '{count} 个',
+          'settings.empty': '当前会话没有可用的 Skill。',
+          'settings.noResults': '没有匹配的 Skill。',
+          'settings.modelInvocable': '模型可调用',
+          'settings.userOnly': '仅用户调用',
+          'settings.whenToUse': '适用场景',
         },
         en: {
           'row.running': 'Loading skill',
@@ -137,6 +172,22 @@ describe('apply', () => {
           'row.stopped': 'Skill load stopped',
           'row.instructions': 'Instructions',
           'menu.userOnly': 'user-only',
+          'settings.nav': 'Skills',
+          'settings.title': 'Skills',
+          'settings.intro': 'View skills available to the current session. Type /name in the conversation to invoke one.',
+          'settings.loading': 'Loading skills…',
+          'settings.error': 'Could not load the skill catalog.',
+          'settings.retry': 'Retry',
+          'settings.noSession': 'Open a session to view its available skills.',
+          'settings.searchLabel': 'Search skills',
+          'settings.searchPlaceholder': 'Search names, descriptions, or use cases',
+          'settings.catalog': 'Current skills',
+          'settings.count': '{count}',
+          'settings.empty': 'This session has no available skills.',
+          'settings.noResults': 'No matching skills.',
+          'settings.modelInvocable': 'Model-invocable',
+          'settings.userOnly': 'User-only',
+          'settings.whenToUse': 'When to use',
         },
       },
     }])

@@ -34,7 +34,7 @@ const COLD_READ_CONCURRENCY = 4
 /**
  * One entry of a {@link listChildren} result, ordered by header `createdAt`
  * with ties broken on id. Only a candidate whose durable header has
- * `origin: 'subagent'` is interpreted. A served `subagent` projection value
+ * `purpose: 'subagent'` is interpreted. A served `subagent` projection value
  * produces a `child`; a settled candidate whose fold served no identity
  * produces a `diagnostic`; a running candidate without one is omitted — its
  * descriptor may not be appended yet (the creation window). Diagnostics
@@ -53,7 +53,7 @@ export type SubagentListEntry =
      * delivery as an ownership conflict.
      */
     readonly activity: 'running' | 'inactive'
-    /** Whether a direct descendant has durable `origin: 'subagent'`. */
+    /** Whether a direct descendant has durable `purpose: 'subagent'`. */
     readonly hasChildren: boolean
   } & (
     | {
@@ -115,7 +115,7 @@ interface PositionedCandidate {
 }
 
 /**
- * Enumerate one parent's origin-classified direct children from the
+ * Enumerate one parent's purpose-classified direct children from the
  * live-preferred merge of `ctx.sessions` and optional session persistence,
  * serving each identity from the `subagent` projection unit: the registry's
  * watermark snapshot for a live child; for a cold one, a durable
@@ -139,7 +139,7 @@ export async function listChildren(
   const listing = await prepareListing(ctx, signal)
   const candidates = [...listing.corpus.values()]
     .filter(record => record.header.parentSession === parentSessionId
-      && record.header.origin === 'subagent')
+      && record.header.purpose === 'subagent')
     .sort(compareCorpusRecords)
   const rows = await resolveCandidateRows(candidates, listing, signal)
   return rows.filter((row): row is SubagentListEntry => row !== undefined)
@@ -232,7 +232,7 @@ async function prepareListing(
   }
   const subagentParents = new Set<SessionId>()
   for (const record of corpus.values()) {
-    if (record.header.origin === 'subagent' && record.header.parentSession !== undefined) {
+    if (record.header.purpose === 'subagent' && record.header.parentSession !== undefined) {
       subagentParents.add(record.header.parentSession)
     }
   }
@@ -294,7 +294,7 @@ async function resolveCandidateRows(
   return rows
 }
 
-/** Build origin-classified candidates from the complete tree without recursion. */
+/** Build purpose-classified candidates from the complete tree without recursion. */
 function descendantCandidates(
   corpus: ReadonlyMap<SessionId, CorpusRecord>,
   rootSessionId: SessionId,
@@ -321,7 +321,7 @@ function descendantCandidates(
     const id = position.record.header.id
     if (visited.has(id)) continue
     visited.add(id)
-    if (position.record.header.origin === 'subagent') positioned.push(position)
+    if (position.record.header.purpose === 'subagent') positioned.push(position)
     const descendants = children.get(id) ?? []
     for (const record of [...descendants].reverse()) {
       stack.push({ record, parentId: id, depth: position.depth + 1 })

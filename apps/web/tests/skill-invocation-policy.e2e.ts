@@ -22,6 +22,7 @@ import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './suppor
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/skill-invocation-policy', import.meta.url))
 const MENU_EXPECTED = join(SNAPSHOT_DIR, 'menu.expected.md')
+const SETTINGS_EXPECTED = join(SNAPSHOT_DIR, 'settings.expected.md')
 const MODE = webSnapshotMode()
 
 interface SeedSkill {
@@ -113,6 +114,33 @@ describe('web e2e: skill invocation policy through the real host', () => {
     await compareOrRefreshGolden(MENU_EXPECTED, snapshot, MODE)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
-    await assertFixtureInventory(SNAPSHOT_DIR, ['menu.expected.md'])
+  })
+
+  it('shows the same current-session catalog in Settings', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-skill-settings'))
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Settings' })
+    await dialog.getByRole('button', { name: 'Skills', exact: true }).click()
+    await dialog.getByRole('heading', { name: 'Skills', exact: true }).waitFor({ timeout: 10_000 })
+
+    expect(await dialog.locator('[data-skill-name]').count()).toBe(2)
+    expect(await dialog.locator('[data-skill-name="policy-shared"]').count()).toBe(1)
+    expect(await dialog.locator('[data-skill-name="policy-user-only"]').count()).toBe(1)
+    expect(await dialog.locator('[data-skill-name="policy-model-only"]').count()).toBe(0)
+    expect(await dialog.getByText('Model-invocable', { exact: true }).count()).toBe(1)
+    expect(await dialog.getByText('User-only', { exact: true }).count()).toBe(1)
+
+    const search = dialog.getByRole('textbox', { name: 'Search skills' })
+    await search.fill('both model')
+    expect(await dialog.locator('[data-skill-name]').count()).toBe(1)
+    expect(await dialog.locator('[data-skill-name="policy-shared"]').count()).toBe(1)
+    await search.fill('')
+
+    const snapshot = await captureStableAria(page, '[data-skill-settings]', scaffold.workspaceCwd)
+    await compareOrRefreshGolden(SETTINGS_EXPECTED, snapshot, MODE)
+    expect(tripwire.pageErrors).toEqual([])
+    expect(tripwire.warnings).toEqual([])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['menu.expected.md', 'settings.expected.md'])
   })
 })

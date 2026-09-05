@@ -8,9 +8,9 @@
 
 ## 存储模型
 
-Schema 17 保留普通 ROWID 表以及复合主键索引 `events(session_id, seq)`。标量行存储一个逻辑事件。打包行把 `text-chunks`、`reasoning-chunks` 或 `tool-call-chunks` 用作物理 `type`；`seq` 与 `time` 标识所表示的第一个事件，`data` 保存共享的分片打包 payload。打包行把 `ignorable=0` 用作物理判别值，并让 `source_event_seqs` 与 `surface_op` 保持 `NULL`；标量行仅在逻辑事件可忽略时使用 `ignorable=1`，否则使用 `NULL`。因此，未来的可忽略逻辑事件即使复用了某个存储标签名称，也不会被解码为打包行。这些标签属于存储记录，而不是 `SessionEventMap` 成员。
+Schema 18 保留普通 ROWID 表以及复合主键索引 `events(session_id, seq)`。标量行存储一个逻辑事件。打包行把 `text-chunks`、`reasoning-chunks` 或 `tool-call-chunks` 用作物理 `type`；`seq` 与 `time` 标识所表示的第一个事件，`data` 保存共享的分片打包 payload。打包行把 `ignorable=0` 用作物理判别值，并让 `source_event_seqs` 与 `surface_op` 保持 `NULL`；标量行仅在逻辑事件可忽略时使用 `ignorable=1`，否则使用 `NULL`。因此，未来的可忽略逻辑事件即使复用了某个存储标签名称，也不会被解码为打包行。这些标签属于存储记录，而不是 `SessionEventMap` 成员。
 
-Schema 17 在本包内拥有 codec，不导入其他持久化格式中可变的实现。只有字段完全匹配、连续且属于同一分片块的文本、推理或工具调用 delta 才会打包。未知字段、surface 元数据、序列缺口、不兼容的块／调用身份以及不安全时间戳仍以标量行存储。一个打包行最多表示 1,024 个事件，未压缩 UTF-8 `data` 最多 1 MiB；更长的连续段会在不改变逻辑事件的前提下分割。读取会在向持久化协调器返回数据前，重建每个原始序列号、时间戳、token 边界、参数片段和 payload。
+Schema 18 在本包内保留 schema-17 codec，不导入其他持久化格式中可变的实现。只有字段完全匹配、连续且属于同一分片块的文本、推理或工具调用 delta 才会打包。未知字段、surface 元数据、序列缺口、不兼容的块／调用身份以及不安全时间戳仍以标量行存储。一个打包行最多表示 1,024 个事件，未压缩 UTF-8 `data` 最多 1 MiB；更长的连续段会在不改变逻辑事件的前提下分割。读取会在向持久化协调器返回数据前，重建每个原始序列号、时间戳、token 边界、参数片段和 payload。
 
 序列化后的 `data` 小于 4 KiB 时保持为 SQLite `TEXT`。达到或超过该阈值时，写入方会使用 Zstandard level 3，并且只在 frame 小于原文本的情况下存储 `BLOB`；读取方会先解压，再执行 UTF-8 校验和 JSON 解析。`source_event_seqs` 仍是完整且有序的来源数组。第一个序列使用无符号 varint，后续序列使用 ZigZag varint 编码的有符号差值，并存为 `BLOB`；不会省略任何来源，也不会把数组转换成范围。
 
@@ -20,7 +20,9 @@ Schema 17 在本包内拥有 codec，不导入其他持久化格式中可变的�
 
 ## Schema 兼容性
 
-全新数据库直接初始化为 schema 17。旧 schema、外部 application identity、非空未版本化数据库以及不兼容 schema 对象都会被拒绝；这个预发布提供方不提供迁移。每条语句和固定 pragma 都位于随包发布的 `.sql` 资源中；值使用 SQLite 参数，运行时代码不会拼装查询文本。
+全新数据库直接初始化为 schema 18，`purpose` 为必填字段（`interactive`、`subagent` 或 `maintenance`）。普通打开时，旧 schema、外部 application identity、非空未版本化数据库以及不兼容 schema 对象都会被拒绝。每条语句和固定 pragma 都位于随包发布的 `.sql` 资源中；值使用 SQLite 参数，运行时代码不会拼装查询文本。
+
+两种集成输入支持显式离线升级：带 `purpose` 的 schema 16，以及带可空 `origin` 的 schema 17。先停止所有写入方并备份数据库，再运行 `pnpm exec tsx scripts/upgrade-session-sqlite.ts --source <absolute-source> --output <new-absolute-output> --confirm-stopped-and-backed-up`。命令不覆盖源文件或既有目标文件；验证 schema 归属，仅转换已知 origin，保留 ID、父子关系和 revision，并在提交前比对逻辑事件哈希。Schema-17 打包行保持字节一致。未知或损坏输入会被拒绝，不创建空历史。检查报告后再修改部署配置。此操作不处理 JSONL 或记忆数据库。
 
 ## 配置（schemastery）
 

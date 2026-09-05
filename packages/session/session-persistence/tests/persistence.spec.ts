@@ -493,6 +493,41 @@ describe('PersistenceCoordinator stored identity', () => {
 })
 
 describe('PersistenceCoordinator session preparations', () => {
+  it('rejects an empty accepted-purpose set', () => {
+    const ctx = new Context()
+    const backend = new ControlledBackend()
+
+    expect(() => new PersistenceCoordinator(ctx, backend, {
+      preparedSessionCacheSize: DEFAULT_PREPARED_SESSION_CACHE_SIZE,
+      writeBatchMaxDelayMs: DEFAULT_WRITE_BATCH_MAX_DELAY_MS,
+      acceptedPurposes: [],
+    })).toThrow('acceptedPurposes must contain at least one Session purpose')
+  })
+
+  it('does not admit capability-private maintenance Sessions into a general backend', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const backend = new ControlledBackend()
+    let coordinator!: PersistenceCoordinator<never>
+    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
+      coordinator = new PersistenceCoordinator(inner, backend, {
+        preparedSessionCacheSize: DEFAULT_PREPARED_SESSION_CACHE_SIZE,
+        writeBatchMaxDelayMs: DEFAULT_WRITE_BATCH_MAX_DELAY_MS,
+        acceptedPurposes: ['interactive', 'subagent'],
+      })
+    }, { inject: ['sessions'] }))
+    const id = SessionId('private-maintenance')
+
+    await expect(coordinator.create({ ...meta(id), purpose: 'maintenance' })).rejects.toThrow('does not persist maintenance sessions')
+    const session = ctx.sessions.create(id, { meta: { purpose: 'maintenance' } })
+    session.append('turn/start', { turn: 1 })
+    await expect(ctx.sessions.flush(session)).resolves.toBe(true)
+    expect(backend.store.has(id)).toBe(false)
+
+    await fiber.dispose()
+    await ctx.fiber.dispose()
+  })
+
   it.each([0, 1.5])('rejects invalid preparation cache capacity %s', (capacity) => {
     const ctx = new Context()
     const backend = new ControlledBackend()

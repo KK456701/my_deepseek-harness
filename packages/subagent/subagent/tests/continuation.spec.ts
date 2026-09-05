@@ -268,7 +268,7 @@ describe('SubagentRuntime.startContinuable', () => {
     expect('surfaceOp' in descriptor).toBe(false)
     expect(loaded.meta.id).toBe(started.childId)
     expect(loaded.meta.parentSession).toBe(SessionId('parent'))
-    expect(loaded.meta.origin).toBe('subagent')
+    expect(loaded.meta.purpose).toBe('subagent')
   })
 
   it('rolls the child back completely when the caller signal aborts before acceptance', async () => {

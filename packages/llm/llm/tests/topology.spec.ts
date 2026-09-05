@@ -266,3 +266,53 @@ describe('model discovery registry', () => {
     await expect(ctx.llm.discoverModels('llm-example', { provider: 'known-route' })).resolves.toEqual([])
   })
 })
+
+describe('balance query registry', () => {
+  it('serves one query per settings namespace and disposes with its fiber', async () => {
+    const ctx = await setup()
+    const query = vi.fn(() => Promise.resolve([{ currency: 'CNY', total: '110.00' }]))
+
+    const dispose = ctx.llm.registerBalanceQuery('llm-example', query)
+    await expect(ctx.llm.queryBalance('llm-example')).resolves.toEqual([{ currency: 'CNY', total: '110.00' }])
+    expect(query).toHaveBeenCalledWith({})
+
+    // Disposal is observed through the offer itself, which is the only thing
+    // the registration ever produced.
+    dispose()
+    await expect(ctx.llm.queryBalance('llm-example')).rejects.toThrow(/no balance query is registered/)
+  })
+
+  it('rejects an unnamed namespace and a second registration of the same one', async () => {
+    const ctx = await setup()
+    const query = (): Promise<never[]> => Promise.resolve([])
+
+    expect(() => ctx.llm.registerBalanceQuery('', query)).toThrow(/non-empty settings namespace/)
+    ctx.llm.registerBalanceQuery('llm-example', query)
+    expect(() => ctx.llm.registerBalanceQuery('llm-example', query)).toThrow(/already registered/)
+    // The refused second registration left the first one serving.
+    await expect(ctx.llm.queryBalance('llm-example')).resolves.toEqual([])
+  })
+
+  it('normalizes what a query returns and refuses lines without currency or total', async () => {
+    const ctx = await setup()
+    ctx.llm.registerBalanceQuery('llm-example', () => Promise.resolve([
+      { currency: 'CNY', total: '110.00', granted: '10.00', toppedUp: '100.00' },
+      { currency: 'USD', total: '5.00' },
+    ] as never))
+
+    expect(await ctx.llm.queryBalance('llm-example')).toEqual([
+      { currency: 'CNY', total: '110.00', granted: '10.00', toppedUp: '100.00' },
+      { currency: 'USD', total: '5.00' },
+    ])
+  })
+
+  it('refuses a namespace nothing serves and malformed lines', async () => {
+    const ctx = await setup()
+    ctx.llm.registerBalanceQuery('llm-example', () => Promise.resolve([{ currency: '' }] as never))
+    ctx.llm.registerBalanceQuery('llm-other', () => Promise.resolve([{ total: '' }] as never))
+
+    await expect(ctx.llm.queryBalance('llm-absent')).rejects.toMatchObject({ code: 'NO_BALANCE_QUERY' })
+    await expect(ctx.llm.queryBalance('llm-example')).rejects.toMatchObject({ code: 'INVALID_BALANCE' })
+    await expect(ctx.llm.queryBalance('llm-other')).rejects.toMatchObject({ code: 'INVALID_BALANCE' })
+  })
+})

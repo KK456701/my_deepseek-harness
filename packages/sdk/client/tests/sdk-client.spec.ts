@@ -126,6 +126,19 @@ describe('DeepSeekHarness', () => {
     await harness.close()
   })
 
+  it('preserves verification and actual-start receipts without turning audit text into the answer', async () => {
+    const harness = harnessWith({ FAKE_RELIABILITY: '1', FAKE_TEXT: 'final reply' })
+    try {
+      const result = await harness.run('inspect')
+      expect(result.events.find(event => event.type === 'task-execution/result')?.data).toEqual({
+        incarnation: 'fixture', callId: 'inspect', isError: false, started: true, mutationSeq: 1, files: [],
+      })
+      expect(JSON.stringify(result.events.find(event => event.type === 'task-contract/model-assessment')?.data))
+        .toContain('"answerEvidence":[{"paragraphId":"p1","quote":"缺少当前证据"}]')
+      expect(result.finalResponse).toBe('final reply')
+    } finally { await harness.close() }
+  })
+
   it('keeps events root-scoped while streaming notifications for the session tree', async () => {
     const harness = harnessWith({ FAKE_SUBAGENT: '1' })
     const seen: HarnessNotification[] = []

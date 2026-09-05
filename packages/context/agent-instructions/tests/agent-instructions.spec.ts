@@ -182,7 +182,7 @@ async function mountFileToolsAndWorkspaceContext(ctx: Context, config: workspace
 
 function stubAgent(cwd?: string, seed: SessionEvent[] = []): Agent {
   const id = SessionId('s1')
-  const session = Session.create(id, seed, cwd === undefined ? undefined : { version: SESSION_FORMAT_VERSION, id, createdAt: 0, cwd })
+  const session = Session.create(id, seed, cwd === undefined ? undefined : { version: SESSION_FORMAT_VERSION, id, createdAt: 0, purpose: 'interactive', cwd })
   return {
     ctx: new Context(),
     id: SessionId('a1'),
@@ -201,13 +201,14 @@ function stubAgent(cwd?: string, seed: SessionEvent[] = []): Agent {
 }
 
 function stubToolExecution(
-  input: Omit<ToolExecution, 'token' | 'rootCallId'> & {
+  input: Omit<ToolExecution, 'token' | 'rootCallId' | 'started' | 'approvedOnce'> & {
     token?: ToolExecutionToken
     rootCallId?: ToolExecution['rootCallId']
   },
 ): ToolExecution {
   return {
     token: input.token ?? Symbol('workspace-context-test-execution') as ToolExecutionToken,
+    started: false, approvedOnce: false,
     ...input,
     rootCallId: input.rootCallId ?? input.callId,
   }

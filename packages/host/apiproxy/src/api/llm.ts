@@ -74,6 +74,32 @@ export interface LlmApi {
     }>,
     signal?: AbortSignal,
   ): Promise<RpcResponse<{ models: DiscoveredModelView[] }>>
+
+  /**
+   * Query the account balance of the provider route owned by one settings
+   * namespace. The adapter resolves its own endpoint and credential from its
+   * registered configuration, so the request names the namespace and nothing
+   * else. The reply is a list of currency lines (a provider may hold balances
+   * in several currencies); each line carries the total and, when disclosed,
+   * the granted and topped-up portions. A namespace with no registered balance
+   * query, or an endpoint that cannot answer, fails with `balance-unavailable`.
+   */
+  balance(
+    request: RpcRequest<{ settingsNs: string }>,
+    signal?: AbortSignal,
+  ): Promise<RpcResponse<{ balances: AccountBalanceView[] }>>
+}
+
+/** Wire view of one provider account-balance line. */
+export interface AccountBalanceView {
+  /** ISO 4217 currency code of this balance line (`CNY`, `USD`, …). */
+  currency: string
+  /** Total available balance in {@link currency} major units. */
+  total: string
+  /** Provider-granted (promotional) portion, when disclosed. */
+  granted?: string
+  /** User-topped-up portion, when disclosed. */
+  toppedUp?: string
 }
 
 /** Wire view of one model an interrogated endpoint advertises. */

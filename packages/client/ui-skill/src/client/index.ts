@@ -35,7 +35,9 @@ import type { ClientContext, ISessions } from '@deepseek-ai/dsh-client-runtime/c
 import type { InputTriggerServiceContract, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { SkillRow } from './SkillRow.tsx'
+import { SkillSettingsSection, type SkillSettingsSectionInjected } from './SkillSettingsSection.tsx'
 import { en, NS, zh, type SkillKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -129,6 +131,21 @@ export function apply(ctx: ClientContext): void {
   // The bound translate resolves against the registered dictionaries with the
   // locale service's own fallback ladder; candidate-time reads stay plain text.
   const t = ctx.locale.bind(NS)
+
+  const settingsInjected = (): SkillSettingsSectionInjected => ({
+    list: async () => {
+      const sessionId = sessions.list.getSnapshot().current
+      return sessionId === undefined ? null : fetchCatalog(sessionId)
+    },
+  })
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'skills',
+    order: 17,
+    label: () => t('settings.nav'),
+    locale: NS,
+    inject: settingsInjected,
+  }, SkillSettingsSection))
 
   const source: InputTriggerSource = {
     trigger: '/',

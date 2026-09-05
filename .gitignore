@@ -39,3 +39,14 @@ apps/web/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
+.dsh-review-dev/
+
+# Local evaluation materials are not part of the public source snapshot.
+packages/experimental/task-review-bundle/tests/screening/
+packages/experimental/task-review-bundle/tests/long-task/
+packages/experimental/task-review-bundle/tests/evaluation-ledger.spec.ts
+packages/experimental/task-review-bundle/tests/long-task.spec.ts
+packages/experimental/task-review-bundle/tests/pilots.spec.ts
+packages/experimental/task-review-bundle/tests/screening-budget.spec.ts
+packages/experimental/task-review-bundle/tests/screening-materials.spec.ts
+packages/experimental/task-review-bundle/tests/screening-metrics.spec.ts

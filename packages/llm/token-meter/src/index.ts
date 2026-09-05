@@ -7,7 +7,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { BlockAssembler, deepFreeze } from '@deepseek-ai/dsh-llm'
-import type { Message, TokenUsage } from '@deepseek-ai/dsh-llm'
+import type { Message, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { EpochHeader, Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { canonicalHeader, headerEquals, isSurfaceEvent } from '@deepseek-ai/dsh-session'
 // Type-only: resolves the optional projection registry Context declaration.
@@ -297,6 +297,15 @@ export class TokenMeter extends Service {
       const source = session.events[seq]
       // oxlint-disable-next-line typescript/no-non-null-assertion
       const sourceEvent = source!
+      const stagedType: string = sourceEvent.type
+      if (stagedType === 'final-draft/chunk') {
+        const staged = sourceEvent.data as { chunk?: StreamChunk }
+        if (staged.chunk === undefined) {
+          throw new Error(`token meter: staged chunk at seq ${seq} has no chunk`)
+        }
+        assembler.push(staged.chunk)
+        continue
+      }
       if (sourceEvent.type !== 'assistant/chunk') {
         throw new Error(`token meter: assistant/message at seq ${event.seq} source seq ${seq} is not assistant/chunk`)
       }

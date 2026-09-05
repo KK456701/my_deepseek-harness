@@ -1,5 +1,5 @@
 /**
- * Assembled-app regression: a persisted `origin: 'subagent'` child whose log
+ * Assembled-app regression: a persisted `purpose: 'subagent'` child whose log
  * carries no descriptor event is surfaced by `list_agents` as a
  * `[diagnostic: corrupt]` row instead of being silently dropped.
  */
@@ -28,7 +28,7 @@ const task = 'Call list_agents once and report what it shows.'
 
 /**
  * Seed a completed parent turn plus one cold child that durably classifies
- * as a subagent (`origin`) but never appended its descriptor event — the
+ * as a subagent (`purpose`) but never appended its descriptor event — the
  * publication-window death the diagnostic row exists for.
  */
 async function seedDescriptorlessChild(root: string, cwd: string): Promise<void> {
@@ -39,6 +39,7 @@ async function seedDescriptorlessChild(root: string, cwd: string): Promise<void>
     version: SESSION_FORMAT_VERSION,
     id: parentId,
     createdAt: 1,
+    purpose: 'interactive',
     cwd,
     delegationDepth: 0,
   }
@@ -53,7 +54,7 @@ async function seedDescriptorlessChild(root: string, cwd: string): Promise<void>
     createdAt: 2,
     cwd,
     parentSession: parentId,
-    origin: 'subagent',
+    purpose: 'subagent',
     delegationDepth: 1,
   }
   const childEvents: SessionEvent[] = [

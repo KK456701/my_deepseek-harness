@@ -11,7 +11,7 @@ import { createWorkspaceViewStore } from '../src/client/stores.ts'
 const sid = (id: string) => id as SessionId
 const wid = (id: string) => id as WorkspaceId
 const summary = (id: string, updatedAt: number, cwd?: string): SessionSummary => ({
-  id: sid(id), displayTitle: id, running: false, blank: false,
+  id: sid(id), displayTitle: id, purpose: 'interactive', running: false, blank: false,
   updatedAt, ...(cwd === undefined ? {} : { cwd }),
 })
 const list = (...items: SessionSummary[]): SessionListState => ({
@@ -111,14 +111,14 @@ describe('deriveGroups', () => {
   it('hides subagent-origin sessions without hiding ordinary forks', () => {
     const parent = summary('parent', 1)
     const subagent = {
-      ...summary('subagent', 3), parentId: parent.id, origin: 'subagent' as const, running: true,
+      ...summary('subagent', 3), parentId: parent.id, purpose: 'subagent' as const, running: true,
     }
     const grandchild = {
-      ...summary('grandchild', 4), parentId: subagent.id, origin: 'subagent' as const, running: true,
+      ...summary('grandchild', 4), parentId: subagent.id, purpose: 'subagent' as const, running: true,
     }
     const fork = { ...summary('fork', 2), parentId: subagent.id }
     const forkChild = {
-      ...summary('fork-child', 5), parentId: fork.id, origin: 'subagent' as const, running: true,
+      ...summary('fork-child', 5), parentId: fork.id, purpose: 'subagent' as const, running: true,
     }
     const sessions = { ...list(parent, fork, subagent, grandchild, forkChild), current: subagent.id }
     const groups = deriveGroups(
@@ -218,7 +218,7 @@ describe('deriveFlat', () => {
   it('hides subagent-origin rows but keeps ordinary forks', () => {
     const parent = summary('parent', 1)
     const fork = { ...summary('fork', 2), parentId: parent.id }
-    const subagent = { ...summary('subagent', 3), parentId: parent.id, origin: 'subagent' as const }
+    const subagent = { ...summary('subagent', 3), parentId: parent.id, purpose: 'subagent' as const }
     const rows = deriveFlat(
       { ...list(parent, fork, subagent), current: subagent.id },
       noArchive,

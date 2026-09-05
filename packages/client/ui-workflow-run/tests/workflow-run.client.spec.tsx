@@ -263,10 +263,10 @@ const listState = (overrides: Partial<SessionListState> = {}): SessionListState 
   ids: [PARENT_ID, CHILD_ID],
   byId: {
     [PARENT_ID]: {
-      id: PARENT_ID, displayTitle: 'parent', running: true, blank: false, updatedAt: 0,
+      id: PARENT_ID, displayTitle: 'parent', purpose: 'interactive', running: true, blank: false, updatedAt: 0,
     },
     [CHILD_ID]: {
-      id: CHILD_ID, displayTitle: 'child', parentId: PARENT_ID, origin: 'subagent',
+      id: CHILD_ID, displayTitle: 'child', parentId: PARENT_ID, purpose: 'subagent',
       running: true, blank: false, updatedAt: 0,
     },
   },
@@ -624,7 +624,7 @@ describe('WorkflowRunPanel', () => {
       byId: {
         ...listState().byId,
         [SECOND_ID]: {
-          id: SECOND_ID, displayTitle: 'second', parentId: PARENT_ID, origin: 'subagent',
+          id: SECOND_ID, displayTitle: 'second', parentId: PARENT_ID, purpose: 'subagent',
           running: true, blank: false, updatedAt: 0,
         },
       },
@@ -806,7 +806,7 @@ describe('WorkflowRunPanel', () => {
     ['not in ordinary list', listState({ ids: [PARENT_ID] }), 'running'],
     ['remote row', listState({ byId: {
       ...listState().byId,
-      [CHILD_ID]: { ...listState().byId[CHILD_ID]!, origin: undefined },
+      [CHILD_ID]: { ...listState().byId[CHILD_ID]!, purpose: 'interactive' },
     } }), 'running'],
     ['wrong parent', listState({ byId: {
       ...listState().byId,

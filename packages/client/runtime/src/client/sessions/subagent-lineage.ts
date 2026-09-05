@@ -9,7 +9,7 @@ import type { SessionSummary } from './service.ts'
 
 /** Descendant counts projected for one possible parent session. */
 export interface SubagentDescendantSummary {
-  /** All descendants connected through uninterrupted subagent-origin lineage. */
+  /** All descendants connected through uninterrupted subagent-purpose lineage. */
   readonly count: number
   /** Descendants whose exact session summary is currently running. */
   readonly runningCount: number
@@ -17,7 +17,7 @@ export interface SubagentDescendantSummary {
 
 /**
  * Index every subagent descendant under each ancestor it reaches through an
- * uninterrupted subagent-origin chain. Cycles fail soft and orphan owners
+ * uninterrupted subagent-purpose chain. Cycles fail soft and orphan owners
  * remain harmless map keys until their summaries arrive.
  * @param summaries - retained session summaries keyed by id.
  * @returns descendant totals and running totals keyed by possible parent id.
@@ -27,10 +27,10 @@ export function indexSubagentDescendants(
 ): ReadonlyMap<SessionId, SubagentDescendantSummary> {
   const indexed = new Map<SessionId, { count: number; runningCount: number }>()
   for (const descendant of Object.values(summaries)) {
-    if (descendant.origin !== 'subagent') continue
+    if (descendant.purpose !== 'subagent') continue
     const seen = new Set<SessionId>()
     let current: SessionSummary | undefined = descendant
-    while (current?.origin === 'subagent' && current.parentId !== undefined
+    while (current?.purpose === 'subagent' && current.parentId !== undefined
       && !seen.has(current.id)) {
       seen.add(current.id)
       const aggregate = indexed.get(current.parentId)

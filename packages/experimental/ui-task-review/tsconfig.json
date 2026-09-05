@@ -1,0 +1,16 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
+  "include": ["src"],
+  "references": [
+    { "path": "../../client/ui-trajectory" },
+    { "path": "../task-contract" },
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../client/runtime" },
+    { "path": "../../client/ui-conversation" },
+    { "path": "../../client/ui-slots" },
+    { "path": "../../client/ui-primitives" },
+    { "path": "../final-completeness-gate" },
+    { "path": "../../runtime-diagnostics/invariants" }
+  ]
+}

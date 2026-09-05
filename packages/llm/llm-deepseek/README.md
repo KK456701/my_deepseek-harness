@@ -67,6 +67,8 @@ The one registration-captured fact is the retry policy: when its resolved value 
 
 The plugin also declares its route in the configurable-provider directory (`ctx.llm.listConfigurableProviders()`): provider `deepseek-official`, settings namespace `llm-deepseek`, empty settings path — the whole section is the profile. Configuration surfaces use that entry to offer this adapter alongside dormant pi-ai providers.
 
+The plugin registers an account-balance query for the same settings namespace. It resolves the current endpoint and credential snapshot, sends `GET {baseURL}/user/balance`, and validates every returned currency line before exposing it through `ctx.llm.queryBalance()`. The query sends no model request and adds nothing to the Session log or model context. A missing credential, provider rejection, malformed response, or gateway without that DeepSeek endpoint fails the query without exposing the credential.
+
 ## App attribution
 
 Every request carries the shared attribution header from dsh-llm's `attributionHeaders()` - the mandatory `User-Agent` baseline identifying the harness (see [dsh-llm § App attribution](../llm/README.md#app-attribution-attributionts)). Direct DeepSeek requests and OpenAI-compatible gateway requests get no provider-specific app-attribution headers under this adapter contract; OpenRouter app attribution is deferred to a future explicit OpenRouter adapter or mode. A request whose `GenerateOptions.purpose` is `compaction` (dsh-compaction-basic's auxiliary summarization call) additionally carries `x-deepseek-harness-compact: 1`, so the host can separate compaction traffic from conversation requests.
@@ -74,6 +76,8 @@ Every request carries the shared attribution header from dsh-llm's `attributionH
 DeepSeek request identity is separate from app attribution. After credential resolution, every provider request carries `x-deepseek-harness-user-id` with the stable anonymous id from [`@deepseek-ai/dsh-anonymous-user-id`](../../identity/anonymous-user-id/README.md); a request carrying `GenerateOptions.sessionId` also sends that exact value as `x-deepseek-harness-session-id`, while a direct call without a session omits the session header. Both headers go to the resolved `baseURL`, including a configured gateway, and remain outside the request body and model-visible content.
 
 ## Wire-format notes
+
+Tool-free `final-candidate-review` and `final-shadow-review` requests use `response_format: { type: 'json_object' }`, preserving the requested reasoning effort and output limit. Review requests offering evidence tools and ordinary Worker requests retain the default format. JSON mode does not replace the consumer's schema, evidence, or authorization checks; empty or invalid final content remains a failure.
 
 - Streaming only (`stream_options.include_usage` always on). `usage` may arrive attached to the finish chunk or as a trailing usage-only chunk — the translator defers both to `[DONE]`, so `usage` always precedes `finish` and nothing follows `finish`.
 - The adapter-owned `off` effort maps to `thinking: {type: 'disabled'}` and never crosses the wire as `reasoning_effort: 'off'`.

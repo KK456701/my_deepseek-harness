@@ -6,6 +6,8 @@ Event-sourced session log and in-memory store. A `Session` is the append-only so
 
 The optional `@deepseek-ai/dsh-session/invariant` companion registers this package's relational trace checks with `ctx.invariants`: monotonic sequence numbers, turn/step enclosure, and same-step tool call/result pairing. It replays existing sessions when loaded or reloaded; storage validation, snapshotting, freezing, cited source-event validation, and surface acceptance remain always-on responsibilities of the root session package.
 
+`session/retained` keeps a non-conversation audit record visible in session lists and prevents blank-session reuse. It creates no Worker turn, model-history input or execution permission.
+
 ## Service: `SessionStore` (ctx key: `sessions`)
 
 Creates and holds event-sourced `Session` instances. Persistence is intentionally not implemented here — plugins subscribe to `session/event`, flush on `session/flush`, and may mirror the paired `session/created`/`session/disposed` lifecycle.
@@ -33,6 +35,8 @@ Use the split lifecycle only when teardown must be ordered with another resource
 The store pairs announced creation with disposal, publishes post-commit append notifications with per-listener containment, and provides an awaited durability checkpoint. Exact signatures and scope behavior live in the generated region of [session.md](../../../docs/subsystems/session.md#cordis-surface); payloads live in the [persistence catalog](../../../docs/persistence-catalog.md).
 
 ### Class: `Session`
+
+Non-surface observations may pass `{ ignorable: true }` to `append`; readers without that event extension can retain the envelope without treating it as model input. Message-producing events continue to require their surface intent.
 
 Plain class (not a Cordis Service). Create live sessions through `ctx.sessions.create()` and detached replay or inspection sessions through `Session.create()`; the detached factory does not publish lifecycle events or bind the session to a fiber.
 

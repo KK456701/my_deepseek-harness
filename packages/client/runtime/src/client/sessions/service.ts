@@ -53,8 +53,8 @@ export interface SessionSummary {
    */
   agentPreset?: string
   parentId?: SessionId
-  /** Coarse durable origin for navigation filtering; not a continuation capability. */
-  origin?: 'subagent'
+  /** Durable product role used for navigation filtering. */
+  purpose: 'interactive' | 'subagent' | 'maintenance'
   running: boolean
   /** User interaction currently blocking this session (sidebar amber-dot state). */
   pendingInteraction?: PendingInteractionStatus
@@ -681,7 +681,7 @@ export class SessionRuntime implements ISessions {
         ...(entry.title !== undefined ? { title: entry.title } : {}),
         ...(entry.cwd !== undefined ? { cwd: entry.cwd } : {}),
         ...(entry.parentSessionId !== undefined ? { parentId: entry.parentSessionId } : {}),
-        ...(entry.origin !== undefined ? { origin: entry.origin } : {}),
+        purpose: entry.purpose,
         ...(entry.agentPreset !== undefined ? { agentPreset: entry.agentPreset } : {}),
       }
     }
@@ -701,7 +701,7 @@ export class SessionRuntime implements ISessions {
             id: childId,
             displayTitle,
             parentId: address.parentSessionId,
-            origin: 'subagent',
+            purpose: 'subagent',
             running: child.activity === 'running',
             blank: false,
             updatedAt: 0,
@@ -710,7 +710,7 @@ export class SessionRuntime implements ISessions {
           byId[childId] = { ...summary, displayTitle }
         }
         const parent = byId[address.parentSessionId]
-        if (parent !== undefined && parent.origin !== 'subagent') break
+        if (parent !== undefined && parent.purpose !== 'subagent') break
         address = this.manager.navigationAddress(address.parentSessionId)
       }
     }

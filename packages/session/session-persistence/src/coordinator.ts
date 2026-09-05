@@ -15,7 +15,7 @@ import {
   snapshotJsonValue,
   snapshotSessionEvent,
 } from '@deepseek-ai/dsh-session'
-import type { Session, SessionEvent, SessionId, SessionHeader } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionId, SessionHeader, SessionPurpose } from '@deepseek-ai/dsh-session'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { SessionInspection, SessionLocation } from './index.ts'
 import type { SessionPersistenceRevision } from './revision.ts'
@@ -86,6 +86,8 @@ export interface PersistenceCoordinatorOptions {
   readonly preparedSessionCacheSize: number
   /** Maximum intentional batching wait after an idle live queue receives work. */
   readonly writeBatchMaxDelayMs: number
+  /** Session purposes this backend owns. Omit to accept every purpose. */
+  readonly acceptedPurposes?: readonly SessionPurpose[]
 }
 
 /**
@@ -601,6 +603,8 @@ export class PersistenceCoordinator<TornMarker = unknown> {
   private chains = new Map<SessionId, Promise<unknown>>()
   /** Resolved fixed write-batching window shared by per-session controllers. */
   private readonly writeBatchMaxDelayMs: number
+  /** Closed purpose set owned by this persistence backend. */
+  private readonly acceptedPurposes: ReadonlySet<SessionPurpose> | undefined
 
   constructor(
     private ctx: Context,
@@ -620,6 +624,12 @@ export class PersistenceCoordinator<TornMarker = unknown> {
       throw new TypeError(`writeBatchMaxDelayMs must be an integer between 1 and ${MAX_WRITE_BATCH_DELAY_MS}`)
     }
     this.writeBatchMaxDelayMs = options.writeBatchMaxDelayMs
+    this.acceptedPurposes = options.acceptedPurposes === undefined
+      ? undefined
+      : new Set(options.acceptedPurposes)
+    if (this.acceptedPurposes?.size === 0) {
+      throw new TypeError('acceptedPurposes must contain at least one Session purpose when provided')
+    }
     this.preparations = new SessionPreparations(options.preparedSessionCacheSize)
     this.installWritePath()
   }
@@ -639,7 +649,14 @@ export class PersistenceCoordinator<TornMarker = unknown> {
     if (!Number.isSafeInteger(snapshot.createdAt) || snapshot.createdAt < 0) {
       return Promise.reject(new TypeError('session metadata createdAt must be a non-negative safe integer'))
     }
+    if (!this.accepts(snapshot)) {
+      return Promise.reject(new Error(`${this.backend.name} does not persist ${snapshot.purpose} sessions`))
+    }
     return this.serialize(snapshot.id, () => this.createCore(snapshot))
+  }
+
+  private accepts(session: Pick<SessionHeader, 'purpose'>): boolean {
+    return this.acceptedPurposes?.has(session.purpose) ?? true
   }
 
   private async createCore(meta: SessionHeader): Promise<void> {
@@ -1116,24 +1133,30 @@ export class PersistenceCoordinator<TornMarker = unknown> {
 
     // Capture the header on creation and persist a fork's seed once.
     ctx.on('session/created', (session) => {
+      if (!this.accepts(session.header)) return
       void this.initFor(session)
     })
 
     // Keep a persistence-owned copy of each frozen event and start its bounded window.
     ctx.on('session/event', (session, event) => {
+      if (!this.accepts(session.header)) return
       const live = this.initFor(session)
       live.writes.enqueue(event)
     })
 
     // Callers use flush as the immediate durability barrier for buffered writes.
-    ctx.on('session/flush', session => this.flush(session))
+    ctx.on('session/flush', session => this.accepts(session.header) ? this.flush(session) : undefined)
 
     // Session disposal is observe-only, so retirement contains its own failure.
-    ctx.on('session/disposed', (session) => { this.retire(session) })
+    ctx.on('session/disposed', (session) => {
+      if (this.accepts(session.header)) this.retire(session)
+    })
 
     // HMR: a hot reload does not replay session/created, so seed existing live
     // sessions (mirrors dsh-invariants).
-    for (const session of ctx.sessions.list()) void this.initFor(session)
+    for (const session of ctx.sessions.list()) {
+      if (this.accepts(session.header)) void this.initFor(session)
+    }
   }
 
   /** Start and observe one disposed session's final drain. */

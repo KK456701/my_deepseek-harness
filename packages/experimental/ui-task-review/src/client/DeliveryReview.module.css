@@ -1,0 +1,18 @@
+.reviewed {
+  margin: 0;
+  border-inline-start: 2px solid var(--dsw-alias-border-l2);
+  padding-inline-start: 10px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  user-select: none;
+}
+
+.body {
+  margin-block-start: 8px;
+}

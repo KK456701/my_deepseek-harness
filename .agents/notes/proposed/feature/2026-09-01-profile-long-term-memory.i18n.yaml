@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-09-01-profile-long-term-memory.md
+2026-09-01-profile-long-term-memory.md: f2325fe869d3e803e4c20c13650cabc7babd0ef9
+2026-09-01-profile-long-term-memory.zh.md: 887365cf41a09240685c3f2fa614a887d263d077

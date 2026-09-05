@@ -29,6 +29,7 @@ import type { ZodType } from 'zod'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
+import type { CallId } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { UserQuestionError } from '@deepseek-ai/dsh-user-questions'
@@ -52,6 +53,10 @@ declare module '@deepseek-ai/dsh-session/types' {
      * inactive through {@link foldPlanMode}.
      */
     'plan/mode': { active: boolean }
+    /** Exact proposed plan presented by a tool-owned approval interaction. */
+    'plan/review-start': { callId: CallId; plan: string }
+    /** User approval of the exact referenced plan, recorded after all live guards pass. */
+    'plan/review-approved': { callId: CallId; reviewSeq: number }
   }
 }
 
@@ -66,6 +71,23 @@ declare module '@deepseek-ai/cordis' {
  * inactive so the request tool catalog is stable across transitions.
  */
 export const EXIT_PLAN_MODE = 'exit_plan_mode'
+
+/** Runtime approval callbacks captured before the human interaction begins. */
+export interface PlanApprovalObserver {
+  /** Runtime-owned operation details included in the user's approval card. */
+  readonly detail?: string
+  /** Reject stale approval without changing task or execution state. */
+  validate(): void
+  /** Consume approval only after every observer has validated. */
+  approved(event: SessionEvent<'plan/review-approved'>): void
+}
+
+/** Current operation for which a plan is being presented to a human. */
+export interface PlanApprovalRequest {
+  readonly agent: Agent
+  readonly callId: CallId
+  readonly plan: string
+}
 
 /** Deployment-owned plan guidance. */
 export interface PlanModeConfig {
@@ -190,6 +212,7 @@ export class PlanModeController extends Service {
 
   /** Validated deployment-owned guidance. */
   private readonly section: string
+  private readonly approvalObservers = new Set<(request: PlanApprovalRequest) => PlanApprovalObserver>()
 
   /**
    * Latest selection per session awaiting the next accepted in-turn pre-step.
@@ -324,6 +347,7 @@ export class PlanModeController extends Service {
 
     ctx.tools.register(defineTool({
       name: EXIT_PLAN_MODE,
+      taskControl: 'plan',
       description: EXIT_DESCRIPTION,
       parameters: {
         plan: { type: 'string', required: true, description: 'The complete plan, as markdown, starting with a # heading that names it.' },
@@ -351,12 +375,15 @@ export class PlanModeController extends Service {
         if (interaction === undefined) {
           throw new Error('no user-questions channel is available to review the plan; ask the user to switch the session mode instead')
         }
+        const observers = [...this.approvalObservers].map(observe => observe({ agent, callId: exec.callId, plan: args.plan }))
+        const reviewedPlan = [args.plan, ...observers.flatMap(observer => observer.detail === undefined ? [] : [observer.detail])].join('\n\n')
+        const review = agent.session.append('plan/review-start', { callId: exec.callId, plan: reviewedPlan })
         const answer = await interaction.ask({
           questions: [{
             id: REVIEW_ID,
             header: 'Plan review',
             question: 'Approve this plan and leave plan mode?',
-            detail: args.plan,
+            detail: reviewedPlan,
             options: [
               { label: APPROVE_LABEL, description: 'Leave plan mode; the plan is carried out from the next step.' },
               { label: KEEP_PLANNING_LABEL, description: 'Stay in plan mode; feedback goes back to the model.' },
@@ -396,6 +423,10 @@ export class PlanModeController extends Service {
         // Keep plan guidance for the rest of this assistant tool batch. The
         // silent selection is appended at the next accepted in-turn pre-step,
         // before its request assembly.
+        exec.signal.throwIfAborted()
+        for (const observer of observers) observer.validate()
+        const approved = agent.session.append('plan/review-approved', { callId: exec.callId, reviewSeq: review.seq })
+        for (const observer of observers) observer.approved(approved)
         this.pendingIntents.set(agent.session, { active: false, narrate: false })
         return { approved: true }
       },
@@ -411,6 +442,32 @@ export class PlanModeController extends Service {
         content: result.content,
       }),
     }))
+  }
+
+  /**
+   * Observe plan approval without treating a mode toggle as authorization.
+   * @param observe - Captures live guards before a user reviews the exact plan.
+   * @returns Disposer that removes the observer for future reviews.
+   */
+  observeApprovals(observe: (request: PlanApprovalRequest) => PlanApprovalObserver): () => void {
+    let active = true
+    const owned = (request: PlanApprovalRequest): PlanApprovalObserver => {
+      const observer = observe(request)
+      return {
+        ...(observer.detail === undefined ? {} : { detail: observer.detail }),
+        validate: () => {
+          if (!active) throw new Error('plan approval policy changed; present the plan again')
+          observer.validate()
+        },
+        approved: (event) => { observer.approved(event) },
+      }
+    }
+    this.approvalObservers.add(owned)
+    const dispose = this.ctx.effect(() => () => {
+      active = false
+      this.approvalObservers.delete(owned)
+    }, 'plan.approval-observer')
+    return () => { void dispose() }
   }
 
   /**

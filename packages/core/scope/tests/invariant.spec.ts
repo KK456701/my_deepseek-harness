@@ -44,6 +44,12 @@ describe('scoped-dispatch invariants', () => {
       content: [],
       source: { kind: 'user' },
     })
+    const assistant = freezeMessage({
+      id: MessageId('a'),
+      role: 'assistant',
+      content: [],
+      source: { kind: 'model', provider: 'p', model: 'm' },
+    })
     const agentRows = {
       'agent/created': [{ agent }],
       'agent/disposed': [{ agent }],
@@ -66,6 +72,18 @@ describe('scoped-dispatch invariants', () => {
         },
         () => Promise.resolve(undefined),
       ],
+      'agent/request-starting': [{ agent, turn: 1, step: 1, signal }],
+      'agent/assistant-delivery': [{ agent, turn: 1, step: 1, signal }, () => Promise.resolve({ kind: 'live' })],
+      'agent/final-candidate': [{
+        agent,
+        turn: 1,
+        step: 1,
+        message: assistant,
+        usage: undefined,
+        finish: 'completed',
+        sourceEventSeqs: [],
+        signal,
+      }, () => Promise.resolve({ kind: 'commit' })],
       'agent/turn-stopping': [{ agent, turn: 1, signal }],
       'agent/error': [{ agent, turn: 1, step: 0, error: new Error('x') }],
     } satisfies { [K in AgentEventName]: EventArgs<K> }

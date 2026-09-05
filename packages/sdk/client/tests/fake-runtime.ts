@@ -8,6 +8,7 @@
  *
  * Script vocabulary (all optional):
  * - `FAKE_TEXT`: assistant text for each turn (default `hello from fake runtime`).
+ * - `FAKE_RELIABILITY`: include versioned review and execution receipts for SDK replay.
  * - `FAKE_STATUS`: the `session.finished` status (default `ok`).
  * - `FAKE_REASON_KIND`: the `session.finished` reason kind (default `completed`; `none` omits the reason).
  * - `FAKE_SUBAGENT`: also emit a child session (subagent.started + child event + subagent.finished).
@@ -95,6 +96,14 @@ function runTurn(sessionId: string): void {
     return
   }
   event(sessionId, 'turn/start', { turn: 0 })
+  if (env.FAKE_RELIABILITY !== undefined) {
+    event(sessionId, 'task-execution/result', { incarnation: 'fixture', callId: 'inspect', isError: false,
+      started: true, mutationSeq: 1, files: [] })
+    event(sessionId, 'task-contract/model-assessment', { callId: 'review', status: 'validated', result: {
+      requirements: [{ work: 'needs-verification', answerEvidence: [{ paragraphId: 'p1', quote: '缺少当前证据' }] }],
+      action: 'verify',
+    } })
+  }
   event(sessionId, 'assistant/chunk', { turn: 0, step: 0, chunk: { type: 'text-delta', index: 0, text } })
   if (env.FAKE_MALFORMED_MESSAGE !== undefined) {
     event(sessionId, 'assistant/message', {

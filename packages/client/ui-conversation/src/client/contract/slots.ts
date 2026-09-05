@@ -110,6 +110,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       hookContext: string
       inject: ChatNodeTurnDataInjected
     }
+    /**
+     * Optional wrapper around one Assistant row body. Chain entries receive
+     * the rendered body and resolved Turn without replacing Assistant logic.
+     */
+    'conversation.chat.assistant-body': {
+      kind: 'chain'
+      scope: 'session'
+      owner: AssistantBodyOwnerProps
+    }
     /** Optional renderer for one consecutive group of durable message images. */
     'conversation.message.images': { kind: 'single'; scope: 'session'; owner: MessageImagesOwnerProps }
     /**
@@ -378,6 +387,16 @@ export interface TurnTailOwnerProps {
 export interface AssistantActionOwnerProps {
   /** Stable identity carried from the `assistant/message` event. */
   messageId: MessageId
+}
+
+/** Owner currency for an optional Assistant-body presentation wrapper. */
+export interface AssistantBodyOwnerProps {
+  /** Assistant row being rendered. */
+  node: ChatNode<'assistant-step'>
+  /** Resolved Turn whose independently projected feature data may be read. */
+  turn: TurnLocation | undefined
+  /** Resident Assistant Markdown body used when every wrapper declines. */
+  content: ReactNode
 }
 
 /** Hook constrained to business data published on the current Chat Node's Turn. */

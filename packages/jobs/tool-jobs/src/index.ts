@@ -301,6 +301,13 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'job_output',
+    effect: 'read-only',
+    repeatPolicy: 'polling',
+    activePollingResult(args, meta) {
+      if (typeof args !== 'object' || args === null || !('job_id' in args)) return false
+      return meta !== null && typeof meta === 'object' && !Array.isArray(meta)
+        && meta.id === args.job_id && (meta.status === 'running' || meta.status === 'stopping')
+    },
     description: 'Read a background job. Stream jobs return only output since the previous read; '
       + 'final-output jobs return their result after settlement. Every response ends with '
       + '`[status: ...]`. Reads are non-blocking unless `wait: true`, which waits up to the configured cap.',
@@ -313,6 +320,7 @@ export function apply(ctx: Context, config: Config): void {
     },
     finalizeContent: finalizeTaskContent,
     output: {
+      presentationMeta: (_args, value) => ({ id: value.job.id, status: value.job.status }),
       schema: {
         type: 'object',
         additionalProperties: false,

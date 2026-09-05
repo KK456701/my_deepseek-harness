@@ -32,7 +32,7 @@ async function seedSession(root: string, cwd: string, version: number, events: S
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
-  const meta: SessionHeader = { version, id: sessionId, createdAt: 1, cwd }
+  const meta: SessionHeader = { version, id: sessionId, createdAt: 1, purpose: 'interactive', cwd }
   try {
     await ctx.sessionPersistence.create(meta)
     await ctx.sessionPersistence.append(sessionId, events)

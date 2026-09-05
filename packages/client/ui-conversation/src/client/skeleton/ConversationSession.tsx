@@ -39,7 +39,7 @@ function deriveAncestry(list: SessionListState, id: SessionId): readonly Breadcr
     const summary: SessionSummary | undefined = list.byId[cursor]
     if (summary === undefined) break
     chain.unshift({ id: summary.id, displayTitle: summary.displayTitle })
-    if (summary.origin !== 'subagent') break
+    if (summary.purpose !== 'subagent') break
     cursor = summary.parentId
   }
   return chain

@@ -6,7 +6,7 @@ The background job registry contract (`ctx.jobs`). The abstract `JobRegistry` an
 
 ## Service contract
 
-- `start(spec): JobId` validates the attached controller, spec, exact live owner, optional positive `outputLimitBytes`, and any provider-owned admission policy before calling the producer's `run()` once. A preflight rejection or starter throw leaves no job id or registered work; successful return commits without another failable step.
+- `start(spec): JobId` validates the attached controller, spec, exact live owner, optional positive `outputLimitBytes`, and any provider-owned admission policy before calling the producer's `run()` once. A preflight rejection or starter throw leaves no job id or registered work; successful return commits without another failable step. `visibility: 'internal'` creates capability-owned maintenance work that still participates in admission, cancellation, owner cleanup, and service quiescence but is absent from every public lookup, output, listener, and change feed.
 - `get(id, caller?)` and `list(caller?)` return non-consuming snapshots. Listing includes only caller-owned and unowned jobs.
 - `read(id, caller?)` consumes the single cursor for stream jobs and reads terminal output idempotently for final-output jobs.
 - `kill(id, caller?, reason?)` invokes producer cancellation before changing status. A cancellation throw leaves the job running; success changes it to `stopping` and marks terminal delivery reported.
@@ -18,6 +18,8 @@ The background job registry contract (`ctx.jobs`). The abstract `JobRegistry` an
 All three registrations are owner-relative, because one registry serves every composition in the process. A controller or listener registered from an unscoped context serves every owner; one registered under an agent composition's scope serves exactly the agents composed under it. So a composition that loads no controller cannot start background work on the strength of another composition's controls, and one settlement notifies only the listeners its owner's composition registered.
 
 Owned access compares the job's `SessionId` with the caller's. Ids such as `bash-1` are predictable, so this fence is the boundary. Unowned jobs are open to callers and last until service disposal.
+
+Public and internal jobs use separate admission buckets. Internal records are removed as soon as they settle and cannot be addressed through the public registry API; this keeps lifecycle ownership in the shared registry without turning capability maintenance into model-visible background jobs.
 
 `outputLimitBytes` is producer-owned model-presentation policy carried unchanged into snapshots. A controller applies it after adding status or notice metadata; the registry does not rewrite producer output or invent a default for producers that omit it.
 

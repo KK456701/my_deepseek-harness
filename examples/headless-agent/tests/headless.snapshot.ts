@@ -33,6 +33,8 @@ const goalScenarioDir = join(snapshotsDir, 'goal-tools')
 const goalConfigPath = fileURLToPath(new URL('../goal.cordis.snapshot.yml', import.meta.url))
 const retryScenarioDir = join(snapshotsDir, 'provider-retry')
 const retryConfigPath = fileURLToPath(new URL('../retry.cordis.snapshot.yml', import.meta.url))
+const taskContractScenarioDir = join(snapshotsDir, 'task-contract-final-gate')
+const taskContractConfigPath = fileURLToPath(new URL('../task-contract.cordis.snapshot.yml', import.meta.url))
 const compactionScenarioDir = join(snapshotsDir, 'compaction-recovery')
 const compactionSessionFixture = join(compactionScenarioDir, 'session.jsonl')
 const compactionStreamExpected = join(compactionScenarioDir, 'stream-json.expected.jsonl')
@@ -148,7 +150,9 @@ function normalizeHeadlessStream(rawStdout: string, cwd: string): string {
   const normalizedEvents = parseJsonl(scrubRequestHeaders(normalizeSessionLog(
     `${events.map(event => JSON.stringify(event)).join('\n')}\n`,
     context,
-  )))
+  ))).map(event => event.type === 'llm/audited-call'
+    ? { ...event, data: { ...(event.data as JsonObject), durationMs: 0 } }
+    : event)
   const normalizedRecords = records.map((record, index) => index < normalizedEvents.length
     ? { ...record, event: normalizedEvents[index] }
     : record)
@@ -321,6 +325,73 @@ describe('headless stream-json snapshots', () => {
           delayMs: 1,
           failure: { message: 'snapshot transient failure', code: 'RATE_LIMIT', status: 429 },
         })
+      },
+    })
+
+    expect(result.stderr).toBe('')
+    const normalized = normalizeHeadlessStream(result.stdout, runCwd)
+    if (refreshing) await writeFile(streamExpected, normalized)
+    expect(normalized).toBe(await readFile(streamExpected, 'utf8'))
+  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
+  it.each(['rewrite', 'blocked'] as const)('retains failed requirement parsing evidence and itemized %s through the real Loader composition', async (path) => {
+    const prompt = path === 'blocked' ? 'Verify A and B. If the test environment is unavailable, explain both outstanding checks and wait.' : await scenarioPrompt(taskContractScenarioDir, 'task-contract-final-gate')
+    const streamExpected = join(taskContractScenarioDir, path === 'blocked' ? 'blocked.expected.jsonl' : 'stream-json.expected.jsonl')
+    let runCwd = ''
+    const result = await runLoaderSmoke({
+      label: 'Task Contract Final Gate headless stream-json snapshot',
+      tempDirPrefix: 'headless-snapshot-task-contract-',
+      binScript,
+      libBinScript: binScript,
+      configPath: taskContractConfigPath,
+      binArgs: [taskContractConfigPath, prompt],
+      tsconfigPath,
+      env: {
+        DSH_SNAPSHOT: 'replay',
+        DSH_TASK_REVIEW_CASE: path,
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+      },
+      prepare: (cwd) => { runCwd = cwd },
+      inspect: async (cwd) => {
+        const logs = await persistedLogs(cwd)
+        expect(logs).toHaveLength(1)
+        const records = parseJsonl(logs[0]?.content ?? '')
+        const requests = records.filter(record => record.type === 'task-contract/model-request')
+        const dispatched = records.filter(record => record.type === 'task-contract/model-dispatch')
+        expect(dispatched).toHaveLength(requests.length)
+        const responses = records.filter(record => record.type === 'task-contract/model-response')
+        const missing = requests.filter(request => !responses.some(response =>
+          (response.data as JsonObject).callId === (request.data as JsonObject).callId))
+        expect(missing.map(record => record.data)).toEqual([])
+        expect(records.filter(record => record.type === 'task-contract/model-chunk').some(record =>
+          (record.data as JsonObject).chunk && JSON.stringify(record.data).includes('checking requirements'))).toBe(true)
+        const parserRequests = requests.filter(record => JSON.stringify(record.data).includes('requirement-change-parsing'))
+        const parserCallIds = new Set(parserRequests.map(record => (record.data as JsonObject).callId))
+        const parserResponses = responses.filter(record => parserCallIds.has((record.data as JsonObject).callId))
+        const parserAssessments = records.filter(record => record.type === 'task-contract/model-assessment'
+          && parserCallIds.has((record.data as JsonObject).callId))
+        expect(parserRequests).toHaveLength(2)
+        expect(parserResponses).toHaveLength(2)
+        const admission = records.filter(record => record.type === 'task-contract/input-admitted')
+        expect(admission).toHaveLength(1)
+        const directMessages = records.filter(record => record.type === 'user/message'
+          && (record.data as JsonObject).source && ((record.data as JsonObject).source as JsonObject).kind === 'user')
+        expect(admission[0]?.data).toMatchObject({ messageIds: directMessages.map(record => (record.data as JsonObject).id) })
+        expect(parserAssessments).toHaveLength(2)
+        expect(parserAssessments[0]?.data).toMatchObject({ status: 'failed' })
+        expect(parserResponses[0]?.data).toMatchObject({
+          rawOutput: [{ type: 'reasoning', text: 'checking requirements' }, { type: 'text', text: '{"changes":' }],
+          usage: { inputTokens: 12, outputTokens: 8, reasoningTokens: 5 },
+          response: { finishReason: 'stop', termination: 'completed' },
+        })
+        const updates = records.filter(record => record.type === 'task-contract/update')
+        expect(updates).toHaveLength(path === 'blocked' ? 1 : 2)
+        expect(records.filter(record => record.type === 'final-draft/candidate')).toHaveLength(2)
+        expect(records.filter(record => record.type === 'assistant/chunk')).toHaveLength(0)
+        expect(records.filter(record => record.type === 'assistant/message')).toHaveLength(path === 'blocked' ? 2 : 1)
+        expect(records.filter(record => record.type === 'final-review/shadow-result')).toHaveLength(0)
+        expect(records.filter(record => record.type === 'final-draft/decision')).toHaveLength(3)
+        if (path === 'blocked') expect(JSON.stringify(updates)).not.toContain('"state":"completed"')
       },
     })
 

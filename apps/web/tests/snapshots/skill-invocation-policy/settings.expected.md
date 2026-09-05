@@ -1,0 +1,17 @@
+- heading "Skills" [level=2]
+- paragraph: View skills available to the current session. Type /name in the conversation to invoke one.
+- img
+- text: Search skills
+- textbox "Search skills":
+  - /placeholder: Search names, descriptions, or use cases
+- heading "Current skills" [level=3]
+- text: "2"
+- list:
+  - listitem:
+    - code: /policy-shared
+    - text: Model-invocable
+    - paragraph: Available to both model and user invocation
+  - listitem:
+    - code: /policy-user-only
+    - text: User-only
+    - paragraph: Available only to user invocation

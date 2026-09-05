@@ -1,0 +1,31 @@
+- insert:
+    - id: experimental-ui-task-review
+      name: '@deepseek-ai/dsh-experimental-ui-task-review'
+    - id: experimental-task-execution-control
+      name: '@deepseek-ai/dsh-experimental-task-execution-control'
+      config:
+        mode: shadow
+        maxTaskToolCallsPerTurn: 80
+    - id: experimental-task-contract
+      name: '@deepseek-ai/dsh-experimental-task-contract'
+      config:
+        mode: shadow
+        injectWorkerContext: true
+        parserReasoningEffort: low
+        parserMaxTokens: 4096
+        parserTimeoutMs: 30000
+    - id: experimental-final-completeness-gate
+      name: '@deepseek-ai/dsh-experimental-final-completeness-gate'
+      config:
+        mode: shadow
+        reviewTiming: before-delivery
+    - id: experimental-progress-integrity-observer
+      name: '@deepseek-ai/dsh-experimental-progress-integrity-observer'
+      config:
+        mode: shadow
+        repeatOutcomeCount: 3
+        failureStreak: 3
+        alternatingCycles: 3
+        semanticWindowMs: 300000
+        maxUnconfirmedProgressMs: 600000
+        minWindowToolResults: 3

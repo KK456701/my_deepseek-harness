@@ -1,0 +1,11 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "text" },
+      { "type": "text-delta", "index": 0, "text": "MEMORY_SNAPSHOT_OK" },
+      { "type": "block-end", "index": 0, "block": { "type": "text", "text": "MEMORY_SNAPSHOT_OK" } },
+      { "type": "finish", "reason": { "kind": "stop" } }
+    ]
+  }
+]

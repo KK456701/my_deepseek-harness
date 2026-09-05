@@ -386,11 +386,13 @@
       config:
         maxOutputChars: 16000
 
-    # Consecutive-repeat reminders on the tool chain.
+    # Exact repeated call/result detection: remind after three settled pairs and
+    # deny the unchanged fourth attempt before its tool body starts.
     - id: repeat-tool-reminder
       name: '@deepseek-ai/dsh-repeat-tool-reminder'
       config:
-        thresholds: [3, 5, 8]
+        reminderCount: 3
+        blockAttempt: 4
         argumentsPreviewChars: 500
 
     # Every mode enables the stable model-facing web_search tool. DeepSeek search

@@ -603,6 +603,7 @@ describe('dsh-agent-spine-demo bundle', () => {
 
     expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['shared-skill'])
     const execution: ToolExecution = {
+      started: false, approvedOnce: false,
       signal: testToolSignal,
       token: Symbol('agent-core-dsh-home-test') as ToolExecution['token'],
       callId: CallId('agent-core-dsh-home'),

@@ -50,7 +50,7 @@ function fakePersistence(logs: Map<string, SessionEvent[]>) {
     const events = logs.get(String(id))
     if (events === undefined) throw new Error(`session "${id}" not found`)
     return {
-      meta: { version: 0, id, createdAt: 0 },
+      meta: { version: 0, id, createdAt: 0, purpose: 'interactive' },
       events: events.filter(event => event.seq >= fromSeq),
     }
   })
@@ -59,7 +59,7 @@ function fakePersistence(logs: Map<string, SessionEvent[]>) {
 
 /** Header shape for cachedSnapshot calls (fake logs stamp createdAt 0, no cwd). */
 const headerOf = (id: SessionId, createdAt = 0, cwd?: string) =>
-  ({ version: 0, id, createdAt, ...cwd === undefined ? {} : { cwd } })
+  ({ version: 0, id, createdAt, purpose: 'interactive' as const, ...cwd === undefined ? {} : { cwd } })
 
 interface HarnessOptions {
   pool?: MemoryMediaPool

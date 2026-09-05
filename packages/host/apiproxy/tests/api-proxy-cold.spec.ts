@@ -35,10 +35,29 @@ function request<P>(payload: P): RpcRequest<P> {
 }
 
 function header(id: string, createdAt: number, extra: Partial<SessionHeader> = {}): SessionHeader {
-  return { version: 0, id: sid(id), createdAt, cwd: '/proj', ...extra }
+  return { version: 0, id: sid(id), createdAt, purpose: 'interactive', cwd: '/proj', ...extra }
 }
 
 describe('sessions.list cold merge', () => {
+  it('omits attached and cold capability-private maintenance Sessions', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(UserQuestionService)
+    ctx.sessions.create(sid('attached-maintenance'), { meta: { cwd: '/proj', purpose: 'maintenance' } })
+    const cold = header('cold-maintenance', 100, { purpose: 'maintenance' })
+    ctx.provide('sessionPersistence', {
+      list: () => Promise.resolve([cold]),
+      locate: () => undefined,
+    } as never)
+    const api = createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
+
+    const response = await api.sessions.list(request({}))
+
+    if (!response.result.ok) throw new Error('unreachable')
+    expect(response.result.value.items).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
   it('verifies only small possibly-blank artifacts and treats every unavailable probe as visible', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
@@ -53,7 +72,7 @@ describe('sessions.list cold merge', () => {
       header('small-conversation', 200),
       header('large-unknown', 300),
       header('cached-nonblank', 400),
-      header('locationless', 500, { parentSession: sid('session-parent'), origin: 'subagent' }),
+      header('locationless', 500, { parentSession: sid('session-parent'), purpose: 'subagent' }),
       header('vanished', 600),
       header('read-failure', 700),
     ]
@@ -120,7 +139,7 @@ describe('sessions.list cold merge', () => {
       blank: false,
       updatedAt: 500,
       parentSessionId: 'session-parent',
-      origin: 'subagent',
+      purpose: 'subagent',
     })
     expect(byId['vanished']).toMatchObject({ blank: false, updatedAt: 600 })
     expect(byId['read-failure']).toMatchObject({ blank: false, updatedAt: 700 })
@@ -376,7 +395,7 @@ describe('Remote Agent and Session lookup policy', () => {
     const coldId = sid('session-remote-cold-child')
     const coldMeta = header(coldId, 1000, {
       parentSession: sid('session-parent'),
-      origin: 'subagent',
+      purpose: 'subagent',
     })
     const inspect = vi.fn(() => Promise.resolve({ meta: coldMeta, events: [] as SessionEvent[] }))
     ctx.provide('sessionPersistence', {
@@ -385,7 +404,7 @@ describe('Remote Agent and Session lookup policy', () => {
       locate: () => undefined,
     } as never)
     const liveSession = ctx.sessions.create(sid('session-remote-live-child'), {
-      meta: { cwd: '/proj', parentSession: sid('session-parent'), origin: 'subagent' },
+      meta: { cwd: '/proj', parentSession: sid('session-parent'), purpose: 'subagent' },
     })
     const liveAgent = { id: liveSession.id, session: liveSession, status: 'idle', ctx } as Agent
     ctx.agents.register(liveAgent)
@@ -428,7 +447,7 @@ describe('subagent ownership fence', () => {
     const meta = header('session-child', 1000, {
       parentSession: sid('session-parent'),
       seedLength: 0,
-      origin: 'subagent',
+      purpose: 'subagent',
     })
     const events = [
       { type: 'turn/start', seq: 0, time: 1, data: { turn: 1, trigger: { kind: 'message', source: { kind: 'user' } } } },
@@ -535,7 +554,7 @@ describe('subagent ownership fence', () => {
     ctx.agents.register(parent)
 
     const originSession = ctx.sessions.create(sid('session-origin-child'), {
-      meta: { cwd: '/proj', parentSession: parent.id, origin: 'subagent' },
+      meta: { cwd: '/proj', parentSession: parent.id, purpose: 'subagent' },
     })
     const cancel = vi.fn()
     const updateInbox = vi.fn(() => 'applied' as const)
@@ -778,7 +797,7 @@ describe('sessions.prompt synchronous rejection', () => {
     const parent = { id: parentSession.id, session: parentSession, status: 'idle', ctx } as Agent
     ctx.agents.register(parent)
     const childSession = ctx.sessions.create(sessionId, {
-      meta: { cwd: '/proj', parentSession: parent.id, origin: 'subagent' },
+      meta: { cwd: '/proj', parentSession: parent.id, purpose: 'subagent' },
     })
     const child = { id: sessionId, session: childSession, status: 'idle', ctx } as unknown as Agent
     vi.spyOn(ctx.agents, 'resume').mockImplementationOnce(async () => {

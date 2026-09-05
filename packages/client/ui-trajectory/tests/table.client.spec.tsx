@@ -65,6 +65,18 @@ const FOLD_PROPS = {
 }
 
 describe('TrajectoryTable', () => {
+  it('opens auxiliary reasoning through its inspector without rendering it as an assistant answer', () => {
+    const turns: readonly TrajectoryTurnModel[] = [{ turn: null, groups: [{ title: '模型调用 · 需求提取', cells: [{
+      index: 1, kind: 'model', text: '模型调用 · 需求提取 · 请求完成', timeSeconds: 3,
+      detailSections: [{ id: 'status', label: '概览', content: '请求完成，处理结果未记录', format: 'text' },
+        { id: 'thinking', label: '思考', content: 'Provider 原文：核对🙂', format: 'text' }],
+    }] }] }]
+    render(<TrajectoryTable turns={turns} {...FOLD_PROPS} />)
+    expect(screen.queryByText('Provider 原文：核对🙂')).toBeNull()
+    fireEvent.keyDown(screen.getByRole('row', { name: /MODEL/ }), { key: 'Enter' })
+    fireEvent.click(screen.getByRole('tab', { name: '思考' }))
+    expect(screen.getByText('Provider 原文：核对🙂')).toBeTruthy()
+  })
   it('shows a muted placeholder for an assistant response containing only tool calls', () => {
     const turns: readonly TrajectoryTurnModel[] = [{
       turn: 1,

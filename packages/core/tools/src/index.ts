@@ -162,6 +162,15 @@ declare module '@deepseek-ai/cordis' {
      */
     'tools/execute'(this: Scoped<ToolRuntime>, exec: ToolDispatchExecution, next: () => Promise<ToolExecutionResult>): Promise<ToolExecutionResult>
     /**
+     * Persist dispatch intent after around-dispatch wrappers and before the body.
+     * The registry awaits all listeners, then rechecks cancellation and monotonic
+     * guards. Completion of this hook is not proof that the body ran.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent's calls.
+     * @param exec - Identity-protected execution, including nested calls.
+     * @mode waterfall
+     */
+    'tools/dispatch-ready'(this: Scoped<ToolRuntime>, exec: ToolExecution, next: () => Promise<void>): Promise<void>
+    /**
      * Accept, replace, enrich, or block a normalized dispatch result. `next()`
      * accepts it unchanged; thrown tools still reach this waterfall as errors. Async
      * listeners must observe `exec.signal`; after they settle, caller
@@ -208,18 +217,33 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+export { isActivePollingResult } from './repeat-policy.ts'
+
 /** Tool-owned canonical output contract used after the body returns a JSON value. */
 export interface ToolOutputDefinition {
   /** Raw supported JSON Schema enforced against every successful canonical value. */
   readonly schema: JsonSchemaNode
   /** Pure projection from validated arguments and value to Native/model content. */
   render(args: unknown, value: JsonValue): ContentBlock[]
-  /** Pure replayable presentation projection, computed only for top-level calls. */
+  /** Pure replayable metadata, computed for top-level calls and trusted polling results. */
   presentationMeta?(args: unknown, value: JsonValue): JsonValue
 }
 
 /** A registered tool: its schema plus the execution function. */
 export interface ToolDefinition extends ToolSchema {
+  /** Trusted implementation metadata, never model arguments or a sandbox override. */
+  readonly taskControl?: 'plan' | 'ask-user'
+  /** Declared external effect; omission requires conservative authorization review. */
+  readonly effect?: 'read-only' | 'side-effect' | 'unknown'
+  /** Runtime-only repeat handling; omission is strict. Polling requires a target/result check. */
+  readonly repeatPolicy?: 'strict' | 'polling'
+  /**
+   * Recognize a successful observation of the same existing, still-active target.
+   * @param args Frozen call arguments, including the target identity.
+   * @param meta Tool-owned durable presentation metadata from the validated result.
+   * @returns True only for active polling; missing/terminal metadata must return false.
+   */
+  activePollingResult?(args: unknown, meta: JsonValue | undefined): boolean
   /** Mandatory canonical output declaration. */
   readonly output: ToolOutputDefinition
   /**
@@ -377,6 +401,10 @@ export interface CodeDispatchLog {
  * observers run.
  */
 export interface ToolExecution extends ToolExecutionInput {
+  /** Whether the registry entered the actual tool body; denials remain false. */
+  readonly started: boolean
+  /** Whether this exact execution received an allowed-once tool approval. */
+  readonly approvedOnce: boolean
   /** Root model-requested call, resolved for every root and nested execution. */
   readonly rootCallId: CallId
   /** Registry-assigned identity shared with nested calls only as their opaque `parent` token. */
@@ -763,6 +791,7 @@ interface ToolAskResolution {
 interface ToolCancellationState {
   readonly callerSignal: AbortSignal
   bodyInvoked: boolean
+  approvalGranted: boolean
 }
 
 /** One dispatch-scoped fused signal plus listener cleanup after the body settles. */
@@ -805,7 +834,7 @@ export class ToolRuntime extends Service {
   /** Executions whose tool body declared the current turn complete. */
   private concludingExecutions = new WeakSet<ToolExecution>()
   /** Original caller cancellation, kept outside the wrapper-mutable execution object. */
-  private cancellationStates = new WeakMap<ToolRunContext, ToolCancellationState>()
+  private cancellationStates = new WeakMap<ToolExecution, ToolCancellationState>()
   /** Definition-owned final content transform snapshotted before policy begins. */
   private contentFinalizers = new WeakMap<ToolRunContext, ToolDefinition['finalizeContent']>()
   private readonly layers = new ScopedLayers(
@@ -1035,6 +1064,9 @@ export class ToolRuntime extends Service {
    * @returns the exact disposer that unregisters the tool.
    */
   register(definition: ToolDefinition): () => void {
+    if (definition.repeatPolicy === 'polling' && (definition.effect !== 'read-only' || definition.activePollingResult === undefined)) {
+      throw new Error('polling tools require a read-only effect and a target-bound activePollingResult check')
+    }
     const name = definition.name
     const output = (definition as Partial<ToolDefinition>).output
     if (output === undefined || typeof output !== 'object'
@@ -1381,6 +1413,8 @@ export class ToolRuntime extends Service {
     const collapsed = visible !== undefined && this.collapses(name, agent, parent !== undefined)
     const concludingExecutions = this.concludingExecutions
     const base = {
+      started: false,
+      approvedOnce: false,
       token,
       callId,
       rootCallId,
@@ -1413,13 +1447,15 @@ export class ToolRuntime extends Service {
       if (detached === undefined) {
         throw new TypeError('tool execution arguments must be losslessly JSON-serializable')
       }
-      const execution: MutableToolRunContext = { ...base, arguments: deepFreeze(detached) }
+      const state = { callerSignal: signal, bodyInvoked: false, approvalGranted: false }
+      const execution: MutableToolRunContext = {
+        ...base, arguments: deepFreeze(detached),
+        get started() { return state.bodyInvoked },
+        get approvedOnce() { return state.approvalGranted },
+      }
       this.deferredContexts.set(execution, deferredContexts)
       this.contentFinalizers.set(execution, finalizerFor())
-      this.cancellationStates.set(execution, {
-        callerSignal: signal,
-        bodyInvoked: false,
-      })
+      this.cancellationStates.set(execution, state)
       if (collapsed) {
         // The collapse denies the call before the policy pipeline, but a
         // pre-dispatch abort still keeps the established cancellation
@@ -1543,6 +1579,10 @@ export class ToolRuntime extends Service {
     }
     exec.signal = signal
     try {
+      await this.ctx.waterfall(scopeTarget(this, exec.agent), 'tools/dispatch-ready', exec, () => Promise.resolve())
+      if (isAborted(signal)) return toolAbortedBeforeDispatchResult()
+      const denial = this.guardReason(exec)
+      if (denial !== undefined) throw new Error(denial)
       const tool = this.resolveExecution(exec.name, exec.agent, exec.parent !== undefined)
       if (!tool) throw new ToolNotFoundError(exec.name)
       state.bodyInvoked = true
@@ -1711,7 +1751,12 @@ export class ToolRuntime extends Service {
       signal: exec.signal,
     })
     switch (outcome) {
-      case 'allowed-once': return { decision: { kind: 'allow' }, approvalCancelled: false }
+      case 'allowed-once': {
+        const state = this.cancellationStates.get(exec)
+        if (state === undefined) throw new Error('approved execution has no registry state')
+        state.approvalGranted = true
+        return { decision: { kind: 'allow' }, approvalCancelled: false }
+      }
       case 'rejected': return {
         decision: { kind: 'deny', reason: `the user rejected tool "${exec.name}"` },
         approvalCancelled: false,
@@ -1803,7 +1848,7 @@ export class ToolRuntime extends Service {
     }
     const content = snapshotProjection(tool.name, 'render', rendered)
     let meta: JsonValue | undefined
-    if (exec.parent === undefined && tool.output.presentationMeta !== undefined) {
+    if ((exec.parent === undefined || tool.repeatPolicy === 'polling') && tool.output.presentationMeta !== undefined) {
       let projected: JsonValue
       try {
         projected = tool.output.presentationMeta(exec.arguments, value)

@@ -42,6 +42,7 @@ interface TrackedTask {
   kind: JobKind
   label: string
   outputLimitBytes: number | undefined
+  visibility: 'public' | 'internal'
   /** Exact lifecycle owner; session-id authorization is derived from it. */
   owner: Agent | undefined
   cancel: (reason?: string) => void
@@ -140,7 +141,8 @@ export class LocalJobRegistry extends JobRegistry {
     }
     if (spec.owner !== undefined) this.ensureOwnerCleanup(spec.owner)
 
-    const active = this.activeTaskCount(spec.owner)
+    const visibility = spec.visibility ?? 'public'
+    const active = this.activeTaskCount(spec.owner, visibility)
     if (active >= this.maxConcurrentJobsPerOwner) {
       throw new Error(
         `background job limit reached for this owner (limit: ${this.maxConcurrentJobsPerOwner}); use job_kill to stop an unneeded job, wait for it to finish, then retry`,
@@ -159,6 +161,7 @@ export class LocalJobRegistry extends JobRegistry {
       kind: spec.kind,
       label: spec.label,
       outputLimitBytes: spec.outputLimitBytes,
+      visibility,
       owner: spec.owner,
       cancel: hooks.cancel.bind(hooks),
       readOutput: hooks.readOutput?.bind(hooks),
@@ -185,14 +188,14 @@ export class LocalJobRegistry extends JobRegistry {
     )
     // Registration is complete and cannot fail from here, so the visible set
     // has genuinely changed.
-    this.notifyChanged(job.owner)
+    if (job.visibility === 'public') this.notifyChanged(job.owner)
     return id
   }
 
   list(caller?: Agent): JobSnapshot[] {
     const session = caller?.id
     return [...this.store.values()]
-      .filter(job => job.owner === undefined || job.owner.id === session)
+      .filter(job => job.visibility === 'public' && (job.owner === undefined || job.owner.id === session))
       .map(job => this.snapshot(job))
   }
 
@@ -223,7 +226,7 @@ export class LocalJobRegistry extends JobRegistry {
     job.cancel(reason)
     job.status = 'stopping'
     job.reported = true
-    this.notifyChanged(job.owner)
+    if (job.visibility === 'public') this.notifyChanged(job.owner)
     return 'requested'
   }
 
@@ -319,10 +322,11 @@ export class LocalJobRegistry extends JobRegistry {
   }
 
   /** Count authoritative active records for one exact owner or the shared unowned bucket. */
-  private activeTaskCount(owner: Agent | undefined): number {
+  private activeTaskCount(owner: Agent | undefined, visibility: TrackedTask['visibility']): number {
     let count = 0
     for (const job of this.store.values()) {
-      if (job.owner === owner && (job.status === 'running' || job.status === 'stopping')) count += 1
+      if (job.owner === owner && job.visibility === visibility
+        && (job.status === 'running' || job.status === 'stopping')) count += 1
     }
     return count
   }
@@ -344,7 +348,7 @@ export class LocalJobRegistry extends JobRegistry {
   /** Look up a job or fail loud. */
   private expect(id: JobId): TrackedTask {
     const job = this.store.get(id)
-    if (job === undefined) throw new Error(`unknown job ${id}`)
+    if (job === undefined || job.visibility === 'internal') throw new Error(`unknown job ${id}`)
     return job
   }
 
@@ -425,6 +429,10 @@ export class LocalJobRegistry extends JobRegistry {
     job.waitResolvers.clear()
     for (const resolveWait of waitResolvers) resolveWait()
     job.markSettled()
+    if (job.visibility === 'internal') {
+      this.store.delete(job.id)
+      return
+    }
     this.notifyChanged(job.owner)
     if (this.listenersClosed) return
     for (const listener of this.listenersFor(job.owner)) {
@@ -471,7 +479,7 @@ export class LocalJobRegistry extends JobRegistry {
     for (const job of owned) this.store.delete(job.id)
     // Removal is the one visible-set change no per-job record carries, so it
     // must be announced here or an observer keeps the dropped rows forever.
-    if (owned.length > 0) this.notifyChanged(owner)
+    if (owned.some(job => job.visibility === 'public')) this.notifyChanged(owner)
   }
 
   /**
@@ -490,7 +498,7 @@ export class LocalJobRegistry extends JobRegistry {
     // outside this service — the api-proxy carrier registers from the mux
     // stream — is still reachable here. Without this it keeps the rows it last
     // received after a registry reload.
-    const emptied = new Set(all.map(job => job.owner))
+    const emptied = new Set(all.filter(job => job.visibility === 'public').map(job => job.owner))
     this.store.clear()
     for (const owner of emptied) this.notifyChanged(owner)
     // Detach cross-fiber owner effects after the shared store is quiescent.
@@ -521,7 +529,7 @@ export class LocalJobRegistry extends JobRegistry {
         // Teardown reaches settlement only after the producer releases, which a
         // slow stop can defer; announcing the transition here is what keeps an
         // observer from showing `running` for that whole window.
-        this.notifyChanged(job.owner)
+        if (job.visibility === 'public') this.notifyChanged(job.owner)
       } catch (error: unknown) {
         const detail = `cancel threw during teardown; work may be orphaned: ${String(error)}`
         this.selfCtx.logger.warn(`jobs: cancel of ${job.id} threw during teardown; job record forced failed and work may be orphaned: ${String(error)}`)

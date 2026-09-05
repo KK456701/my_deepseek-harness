@@ -11,7 +11,7 @@ import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 const sid = (value: string): SessionId => value as SessionId
 
 function header(id: SessionId): SessionHeader {
-  return { version: 0, id, createdAt: 1, cwd: '/proj' }
+  return { version: 0, id, createdAt: 1, purpose: 'interactive', cwd: '/proj' }
 }
 
 async function createContext(): Promise<Context> {
@@ -54,6 +54,26 @@ describe('API Remote Agent resolver races', () => {
     await ctx.fiber.dispose()
   })
 
+  it('hides live, attached, and cold maintenance Sessions from generic lookup', async () => {
+    for (const state of ['live', 'attached', 'cold'] as const) {
+      const ctx = await createContext()
+      const sessionId = sid(`private-maintenance-${state}`)
+      const meta = { ...header(sessionId), purpose: 'maintenance' as const }
+      const inspect = vi.fn(() => Promise.resolve({ meta, events: [] }))
+      provideSession(ctx, meta, inspect)
+      if (state !== 'cold') {
+        const session = ctx.sessions.create(sessionId, { meta: { cwd: '/proj', purpose: 'maintenance' } })
+        if (state === 'live') ctx.agents.register(stubAgent(ctx, session))
+      }
+
+      const result = await createApiRemoteAgentResolver(ctx, {})(sessionId)
+
+      expect(result).toMatchObject({ error: { code: 'session-not-found', details: { sessionId } } })
+      expect(inspect).not.toHaveBeenCalled()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('resumes through a concurrently attached ordinary Session without optional defaults', async () => {
     const ctx = await createContext()
     const sessionId = sid('ordinary-attach-race')
@@ -80,7 +100,7 @@ describe('API Remote Agent resolver races', () => {
     const sessionId = sid('owned-attach-race')
     const meta = header(sessionId)
     provideSession(ctx, meta, () => {
-      ctx.sessions.create(sessionId, { meta: { cwd: '/proj', origin: 'subagent' } })
+      ctx.sessions.create(sessionId, { meta: { cwd: '/proj', purpose: 'subagent' } })
       return Promise.resolve({ meta, events: [] })
     })
     const resume = vi.spyOn(ctx.agents, 'resume')
@@ -99,7 +119,7 @@ describe('API Remote Agent resolver races', () => {
       const meta = header(sessionId)
       provideSession(ctx, meta, () => Promise.resolve({ meta, events: [] }))
       vi.spyOn(ctx.agents, 'resume').mockImplementationOnce(async () => {
-        const session = ctx.sessions.create(sessionId, { meta: { cwd: '/proj', origin: 'subagent' } })
+        const session = ctx.sessions.create(sessionId, { meta: { cwd: '/proj', purpose: 'subagent' } })
         if (winner === 'agent') ctx.agents.register(stubAgent(ctx, session))
         throw new Error('session id already published')
       })
@@ -138,7 +158,7 @@ describe('API Remote Agent resolver races', () => {
   it('applies the subagent ownership fence to the Agent Host Context', async () => {
     const ctx = await createContext()
     const sessionId = sid('context-owned-subagent')
-    const session = ctx.sessions.create(sessionId, { meta: { cwd: '/proj', origin: 'subagent' } })
+    const session = ctx.sessions.create(sessionId, { meta: { cwd: '/proj', purpose: 'subagent' } })
     ctx.agents.register(stubAgent(ctx.extend(), session))
     const defaultProvider = ctx.typert.contexts.getHost('agent')
     createApiRemoteAgentResolver(ctx, {})

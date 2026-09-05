@@ -734,6 +734,30 @@ Source: [`packages/core/agent/src/index.ts:256`](../../packages/core/agent/src/i
 
 ### `agent/*` events
 
+<a id="agentassistant-delivery--waterfall"></a>
+
+#### `agent/assistant-delivery` — waterfall
+
+Select live publication or a caller-owned durable writer before the provider stream starts. The default preserves ordinary chunk streaming.
+
+```ts cordis-catalog
+/**
+ * Select live publication or a caller-owned durable writer before the
+ * provider stream starts. The default preserves ordinary chunk streaming.
+ * @param payload.agent - the agent making the model call.
+ * @param payload.turn - the open turn number.
+ * @param payload.step - the open step number.
+ * @param payload.signal - the current turn's cancellation signal.
+ * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @mode waterfall
+ */
+'agent/assistant-delivery'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; signal: AbortSignal }, next: () => Promise<AssistantDeliveryDecision>): Promise<AssistantDeliveryDecision>
+```
+
+Types: [Scoped](scope.md)
+
+Source: [`packages/core/agent/src/runtime-types.ts:322`](../../packages/core/agent/src/runtime-types.ts)
+
 <a id="agentcreated--emit"></a>
 
 #### `agent/created` — emit
@@ -756,7 +780,7 @@ A fully configured agent and live session were published. Setup is composition-o
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:159`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:198`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentdisposed--emit"></a>
 
@@ -778,7 +802,7 @@ An agent left the registry; AgentLoop emits this after driver quiescence and sco
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:168`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:207`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agenterror--emit"></a>
 
@@ -802,7 +826,38 @@ A step or turn errored. The machine reports a failure here even when the error h
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:290`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:370`](../../packages/core/agent/src/runtime-types.ts)
+
+<a id="agentfinal-candidate--waterfall"></a>
+
+#### `agent/final-candidate` — waterfall
+
+Decide whether a deferred response without tool calls may enter the transcript. A commit validator runs synchronously immediately before the ordinary assistant event append. Its optional `committed` callback runs synchronously after that append; `continue` requires pending next-step input supplied by the listener.
+
+```ts cordis-catalog
+/**
+ * Decide whether a deferred response without tool calls may enter the
+ * transcript. A commit validator runs synchronously immediately before the
+ * ordinary assistant event append. Its optional `committed` callback runs
+ * synchronously after that append; `continue` requires pending next-step
+ * input supplied by the listener.
+ * @param payload.agent - the agent that produced the candidate.
+ * @param payload.turn - the open turn number.
+ * @param payload.step - the open step number.
+ * @param payload.message - complete staged assistant message.
+ * @param payload.usage - provider usage attached to the candidate, when present.
+ * @param payload.finish - normal completion or the provider output cap.
+ * @param payload.sourceEventSeqs - durable staging events that produced the candidate.
+ * @param payload.signal - the current turn's cancellation signal.
+ * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @mode waterfall
+ */
+'agent/final-candidate'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; message: AssistantMessage; usage: TokenUsage | undefined; finish: AssistantCandidateFinish; sourceEventSeqs: readonly number[]; signal: AbortSignal }, next: () => Promise<FinalCandidateDecision>): Promise<FinalCandidateDecision>
+```
+
+Types: [AssistantMessage](llm-streaming.md) · [Scoped](scope.md) · [TokenUsage](llm-streaming.md)
+
+Source: [`packages/core/agent/src/runtime-types.ts:340`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentinboxclaimed--emit"></a>
 
@@ -826,7 +881,7 @@ One message left the inbox inside its open turn. If the proposed step is rejecte
 
 Types: [Scoped](scope.md) · [UserMessage](session.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:197`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:236`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentinboxdiscarded--emit"></a>
 
@@ -847,7 +902,7 @@ One message was discarded from the live inbox.
 
 Types: [Scoped](scope.md) · [UserMessage](session.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:205`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:244`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentinboxinserted--emit"></a>
 
@@ -868,7 +923,7 @@ One message entered the live inbox.
 
 Types: [Scoped](scope.md) · [UserMessage](session.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:186`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:225`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentpre-step--waterfall"></a>
 
@@ -893,7 +948,7 @@ Reject a proposed step or replace the messages that enter it. Calling `next()` p
 
 Types: [Scoped](scope.md) · [UserMessage](session.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:231`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:270`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentrequest--waterfall"></a>
 
@@ -919,7 +974,7 @@ Replace the frozen call configuration. `await next()` yields the config the mach
 
 Types: [LlmCallConfig](llm-streaming.md) · [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:244`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:283`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentrequest-error--waterfall"></a>
 
@@ -948,7 +1003,32 @@ Handle one failed model-request attempt before the loop retries or closes its st
 
 Types: [LlmFailure](llm-streaming.md) · [ResolvedRetryPolicy](llm-streaming.md) · [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:260`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:299`](../../packages/core/agent/src/runtime-types.ts)
+
+<a id="agentrequest-starting--emit"></a>
+
+#### `agent/request-starting` — emit
+
+Mark the synchronous start of one model-request attempt after the Step's durable inputs are committed and before request assembly begins. A retry emits this event again for the replacement attempt.
+
+```ts cordis-catalog
+/**
+ * Mark the synchronous start of one model-request attempt after the Step's
+ * durable inputs are committed and before request assembly begins. A retry
+ * emits this event again for the replacement attempt.
+ * @param payload.agent - the agent starting the request attempt.
+ * @param payload.turn - the open turn number.
+ * @param payload.step - the open step number.
+ * @param payload.signal - the current turn's cancellation signal.
+ * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @mode emit
+ */
+'agent/request-starting'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; signal: AbortSignal }): void
+```
+
+Types: [Scoped](scope.md)
+
+Source: [`packages/core/agent/src/runtime-types.ts:311`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentsession-start--emit"></a>
 
@@ -972,7 +1052,7 @@ The session lifecycle began, once before the first turn. Use `agent.inject()` to
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:217`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:256`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentstatus--emit"></a>
 
@@ -995,7 +1075,7 @@ Agent status changed (`idle` ⇄ `running`). A waking delivery enters `running` 
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:178`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:217`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agentturn-stopping--serial"></a>
 
@@ -1026,7 +1106,7 @@ The turn is about to close: the model owes no response (no live tool calls, no f
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/agent/src/runtime-types.ts:278`](../../packages/core/agent/src/runtime-types.ts)
+Source: [`packages/core/agent/src/runtime-types.ts:358`](../../packages/core/agent/src/runtime-types.ts)
 
 <a id="agent-loop-events"></a>
 

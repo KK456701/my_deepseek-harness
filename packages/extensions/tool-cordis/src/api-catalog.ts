@@ -518,6 +518,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'codexStructuredRunner',
+    summary: 'Private capability whose consumer owns durable request/result auditing.',
+    description: 'Private capability whose consumer owns durable request/result auditing.',
+    methods: [
+      {
+        signature: 'abstract prepareCall(request: CodexStructuredCallRequest, callerSignal: AbortSignal): Promise<PreparedCodexStructuredCall>',
+        description: 'Freeze per-call settings without dispatching a provider request.',
+        parameters: [{ name: 'request', description: 'Model, reasoning, prompt, schema, and result bound.' }, { name: 'callerSignal', description: 'Cancellation covering local configuration resolution and dispatch preparation.' }],
+        returns: 'Owned single-use call; the caller must dispose it in finally.',
+      },
+    ],
+  },
+  {
     key: 'commands',
     summary: 'Human-command registry.',
     description: 'Human-command registry. Plain-context definitions are global; definitions registered through a command-injected child of an agent context shadow globals for that agent.',
@@ -923,6 +936,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the advertised models, deduplicated in endpoint order.',
       },
       {
+        signature: 'registerBalanceQuery( settingsNs: string, query: (request: LlmBalanceRequest) => Promise<readonly LlmAccountBalance[]>, ): () => void',
+        description: 'Offer to query one provider account\'s balance on behalf of the settings namespace this plugin owns. The namespace is the key because that is what a configuration surface already holds from the configurable-provider directory, and the adapter resolves its own endpoint and credential from its registered configuration. Disposed with the fiber.',
+        parameters: [{ name: 'settingsNs', description: 'the namespace whose profiles this query serves.' }, { name: 'query', description: 'resolves the provider\'s account balance; must honor `request.signal`.' }],
+        returns: 'the disposer that withdraws the offer.',
+      },
+      {
+        signature: 'async queryBalance( settingsNs: string, request: LlmBalanceRequest = {}, ): Promise<LlmAccountBalance[]>',
+        description: 'Query one registered provider namespace\'s account balance. The adapter resolves its endpoint and credential from its own configuration; the request carries only caller cancellation.',
+        parameters: [{ name: 'settingsNs', description: 'namespace whose registered balance query serves this call.' }, { name: 'request', description: 'caller cancellation (endpoint and credential are adapter-owned).' }],
+        returns: 'validated balance lines, in provider order.',
+      },
+      {
         signature: 'providerRetryPolicy(provider: string): ResolvedRetryPolicy',
         description: 'Resolve the retry policy captured when one provider route was registered.',
         parameters: [{ name: 'provider', description: 'registered provider route to inspect.' }],
@@ -976,6 +1001,334 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Select a provider by the file\'s extension and run one query. Selection is per-query and order-independent; no match throws `LspError` `LSP_UNAVAILABLE`.',
         parameters: [{ name: 'request', description: 'the normalized query.' }, { name: 'signal', description: 'optional cancellation forwarded to the selected provider.' }],
         returns: 'the normalized, closed-union result.',
+      },
+    ],
+  },
+  {
+    key: 'memory',
+    summary: 'Public memory operations available to prompt, Remote, and UI consumers.',
+    description: 'Public memory operations available to prompt, Remote, and UI consumers.',
+    methods: [
+      {
+        signature: 'abstract getProfileState(): Promise<MemoryProfileState>',
+        description: 'Read the current profile-level memory state.',
+        parameters: [],
+        returns: 'Current profile-level state.',
+      },
+      {
+        signature: 'abstract updateProfileControls(expectedRevision: number, patch: MemoryProfileControlPatch): Promise<MemoryProfileState>',
+        description: 'Apply revision-checked profile enable and default-control switches.',
+        parameters: [{ name: 'expectedRevision', description: 'Profile control revision observed by the caller.' }, { name: 'patch', description: 'Switches to replace.' }],
+        returns: 'Complete committed profile state.',
+      },
+      {
+        signature: 'abstract getRuntimeSettings(): Promise<MemoryRuntimeSettings>',
+        description: 'Read the effective profile-wide scheduler settings.',
+        parameters: [],
+        returns: 'Complete settings and their optimistic revision.',
+      },
+      {
+        signature: 'abstract updateRuntimeSettings( expectedRevision: number, patch: MemoryRuntimeSettingsPatch, ): Promise<MemoryRuntimeSettings>',
+        description: 'Apply an optimistic live scheduler-settings update.',
+        parameters: [{ name: 'expectedRevision', description: 'Revision observed by the caller.' }, { name: 'patch', description: 'Values to replace; omitted values remain unchanged.' }],
+        returns: 'Complete committed settings.',
+      },
+      {
+        signature: 'abstract getSessionControls(sessionId: SessionId): Promise<SessionMemoryControls>',
+        description: 'Return explicit controls and their revision for one Session.',
+        parameters: [{ name: 'sessionId', description: 'Interactive Session to inspect.' }],
+        returns: 'Current revisioned controls.',
+      },
+      {
+        signature: 'abstract setSessionControls( sessionId: SessionId, expectedRevision: number, patch: SessionMemoryControlsPatch, ): Promise<SessionMemoryControls>',
+        description: 'Apply an optimistic Session-control update.',
+        parameters: [{ name: 'sessionId', description: 'Interactive Session to update.' }, { name: 'expectedRevision', description: 'Revision observed by the caller.' }, { name: 'patch', description: 'Explicit control values to replace.' }],
+        returns: 'Complete committed controls.',
+      },
+      {
+        signature: 'abstract acquirePromptSnapshot(request: MemoryPromptSnapshotRequest): Promise<MemoryPromptSnapshotResult>',
+        description: 'Pin the current prompt summary when injection is enabled and a generation exists.',
+        parameters: [{ name: 'request', description: 'Session identity, byte limit, and lease owner.' }],
+        returns: 'Leased complete-item summary with byte/item counts, or a reasoned skip. Read and integrity failures reject.',
+      },
+      {
+        signature: 'abstract releaseReadLease(leaseId: MemoryReadLeaseId): Promise<void>',
+        description: 'Release an acquired generation read lease; repeated release is harmless.',
+        parameters: [{ name: 'leaseId', description: 'Lease returned with a prompt snapshot.' }],
+      },
+      {
+        signature: 'abstract listGenerationTree(request: MemoryTreeRequest): Promise<MemoryTreePage>',
+        description: 'List files from one immutable generation.',
+        parameters: [{ name: 'request', description: 'Generation, cursor, and page limit.' }],
+        returns: 'Stable bounded file page.',
+      },
+      {
+        signature: 'abstract readGenerationFile(request: MemoryFileReadRequest): Promise<MemoryFileReadResult>',
+        description: 'Read a bounded UTF-8 range from one generation file.',
+        parameters: [{ name: 'request', description: 'Generation, verified relative path, offset, and byte limit.' }],
+        returns: 'Verified file segment and continuation offset.',
+      },
+      {
+        signature: 'abstract listMemoryItems(request: MemoryItemListRequest): Promise<MemoryItemPage>',
+        description: 'List semantic items derived from verified summary and catalog Markdown.',
+        parameters: [{ name: 'request', description: 'Generation, cursor, and bounded page selection.' }],
+        returns: 'Stable item page and deduplicated per-source citation feedback; legacy generations return no editable items.',
+      },
+      {
+        signature: 'abstract rememberMemory(request: RememberMemoryRequest): Promise<AdHocNote>',
+        description: 'Submit one explicit new memory without editing an immutable generation.',
+        parameters: [{ name: 'request', description: 'Exact user-authored memory text.' }],
+        returns: 'Durable pending consolidation note.',
+      },
+      {
+        signature: 'abstract updateMemoryItem(request: UpdateMemoryItemRequest): Promise<AdHocNote>',
+        description: 'Submit a revision-safe replacement for one semantic memory item.',
+        parameters: [{ name: 'request', description: 'Verified item target and replacement text.' }],
+        returns: 'Durable pending consolidation note.',
+      },
+      {
+        signature: 'abstract deleteMemoryItem(request: DeleteMemoryItemRequest): Promise<AdHocNote>',
+        description: 'Submit a revision-safe deletion for one semantic memory item.',
+        parameters: [{ name: 'request', description: 'Verified current item target.' }],
+        returns: 'Durable active forget note.',
+      },
+      {
+        signature: 'abstract listMemory(request: MemoryListRequest): Promise<readonly MemorySearchHit[]>',
+        description: 'List the current memory catalog for a Session whose `use` control allows recall.',
+        parameters: [{ name: 'request', description: 'Calling Session and result limit.' }],
+        returns: 'Stable catalog hits with citations.',
+      },
+      {
+        signature: 'abstract searchMemory(request: MemorySearchRequest): Promise<readonly MemorySearchHit[]>',
+        description: 'Search the current generation with deterministic lexical matching.',
+        parameters: [{ name: 'request', description: 'Calling Session, query, and result limit.' }],
+        returns: 'Authorized ranked hits.',
+      },
+      {
+        signature: 'abstract readMemory(request: MemoryReadRequest): Promise<MemoryFileReadResult>',
+        description: 'Read one current-generation memory file for an authorized Session.',
+        parameters: [{ name: 'request', description: 'Calling Session, verified path, and byte limit.' }],
+        returns: 'Verified bounded file content.',
+      },
+      {
+        signature: 'abstract listAdHocNotes(request: AdHocNoteListRequest): Promise<AdHocNotePage>',
+        description: 'List user-authored consolidation requests.',
+        parameters: [{ name: 'request', description: 'Status, cursor, and page limit.' }],
+        returns: 'Stable bounded note page.',
+      },
+      {
+        signature: 'abstract submitAdHocNote(request: SubmitAdHocNoteRequest): Promise<AdHocNote>',
+        description: 'Persist a user-authored consolidation request.',
+        parameters: [{ name: 'request', description: 'Exact user text and optional superseded note.' }],
+        returns: 'Persisted revisioned note.',
+      },
+      {
+        signature: 'abstract submitConversationMemory(request: SubmitConversationMemoryRequest): Promise<AdHocNote>',
+        description: 'Persist one explicitly requested conversation change with runtime-bound source identity.',
+        parameters: [{ name: 'request', description: 'User-authorized operation and trusted current-turn binding.' }],
+        returns: 'Persisted dual-state note.',
+      },
+      {
+        signature: 'abstract requestScanAndConsolidation(): Promise<void>',
+        description: 'Wake a bounded history scan that ignores only the configured idle delay. Active, unsafe, ineligible, or out-of-age Sessions remain excluded. Discovered ranges continue through Phase 1 and Phase 2 asynchronously.',
+        parameters: [],
+        returns: 'After the manual scan wake has been delivered; pipeline completion remains asynchronous.',
+      },
+      {
+        signature: 'abstract startCleanPolicyRebuild(request: StartCleanPolicyRebuildRequest): Promise<MemoryRebuild>',
+        description: 'Delete derived state and rebuild eligible completed turns inside a frozen time window.',
+        parameters: [{ name: 'request', description: 'Destructive confirmation, lookback duration, and explicit-note retention policy.' }],
+        returns: 'Durable rebuild state created before filesystem cleanup begins.',
+      },
+      {
+        signature: 'abstract requestConsolidation(): Promise<void>',
+        description: 'Wake consolidation for already durable candidates and explicit notes.',
+        parameters: [],
+        returns: 'After the manual wake has been delivered; publication remains asynchronous.',
+      },
+      {
+        signature: 'abstract listQuarantines(request: MemoryQuarantineListRequest): Promise<MemoryQuarantinePage>',
+        description: 'List source and consolidation ranges awaiting an explicit retry.',
+        parameters: [{ name: 'request', description: 'Cursor and page limit.' }],
+        returns: 'Stable bounded quarantine page.',
+      },
+      {
+        signature: 'abstract retryQuarantine(id: QuarantineRangeId): Promise<void>',
+        description: 'Requeue one bounded quarantined source or consolidation range.',
+        parameters: [{ name: 'id', description: 'Quarantine identity returned by {@link listQuarantines}.' }],
+      },
+      {
+        signature: 'abstract resetMemory(request: ResetMemoryRequest): Promise<void>',
+        description: 'Clear generated memory and prevent automatic relearning from pre-reset Session history.',
+        parameters: [{ name: 'request', description: 'Exact destructive confirmation.' }],
+      },
+    ],
+  },
+  {
+    key: 'memoryMaintenance',
+    summary: 'Coalesced scheduler driver and quiescent shutdown seam.',
+    description: 'Coalesced scheduler driver and quiescent shutdown seam.',
+    methods: [
+      {
+        signature: 'abstract wake(reason: MemoryWakeReason): void',
+        description: 'Coalesce a reason and arrange a scheduler pass without waiting for it.',
+        parameters: [{ name: 'reason', description: 'Work source that requested a pass.' }],
+      },
+      {
+        signature: 'abstract runDue(signal: AbortSignal): Promise<MemoryMaintenanceRun>',
+        description: 'Run one bounded due-work pass using caller cancellation.',
+        parameters: [{ name: 'signal', description: 'Cancellation for claims and owned work.' }],
+        returns: 'Counts and next wake deadline from the settled pass.',
+      },
+      {
+        signature: 'abstract disposeAndDrain(signal: AbortSignal): Promise<void>',
+        description: 'Stop claims, cancel owned work, and wait until every owned operation settles.',
+        parameters: [{ name: 'signal', description: 'Caller deadline; settlement still completes after it aborts.' }],
+      },
+    ],
+  },
+  {
+    key: 'memoryPipelineStore',
+    summary: 'Private persistence and publication operations consumed only by the scheduler.',
+    description: 'Private persistence and publication operations consumed only by the scheduler.',
+    methods: [
+      {
+        signature: 'abstract initializeRuntimeSettings(defaults: MemoryRuntimeSettingsValues): Promise<MemoryRuntimeSettings>',
+        description: 'Persist deployment defaults only when the profile has no scheduler settings yet.',
+        parameters: [{ name: 'defaults', description: 'Scheduler defaults resolved by the provider configuration.' }],
+        returns: 'Effective durable settings, preserving any user-authored revision.',
+      },
+      {
+        signature: 'abstract getRuntimeSettings(): Promise<MemoryRuntimeSettings>',
+        description: 'Read the latest durable scheduler settings for one maintenance pass.',
+        parameters: [],
+        returns: 'Complete settings and revision.',
+      },
+      {
+        signature: 'abstract readConsolidationInput(claim: Phase2Claim, workspace: Phase2Workspace): Promise<StructuredConsolidationInput>',
+        description: 'Read frozen one-shot input.',
+        parameters: [{ name: 'claim', description: 'Owned claim.' }, { name: 'workspace', description: 'Backend workspace handle.' }],
+        returns: 'Bounded files and allowed source/note IDs.',
+      },
+      {
+        signature: 'abstract recordPhase2Request(request: Phase2StructuredRequest): Promise<MemoryAttemptId>',
+        description: 'Persist dispatch request.',
+        parameters: [{ name: 'request', description: 'Owned claim and exact request.' }],
+        returns: 'New audit identity.',
+      },
+      {
+        signature: 'abstract recordPhase2Result(result: Phase2StructuredResult): Promise<void>',
+        description: 'Persist final result before applying files.',
+        parameters: [{ name: 'result', description: 'Bounded final result and current owner.' }],
+      },
+      {
+        signature: 'abstract applyConsolidationResult(claim: Phase2Claim, workspace: Phase2Workspace, attemptId: MemoryAttemptId): Promise<void>',
+        description: 'Materialize validated files from the persisted result.',
+        parameters: [{ name: 'claim', description: 'Owned claim.' }, { name: 'workspace', description: 'Current staging handle.' }, { name: 'attemptId', description: 'Completed audit.' }],
+      },
+      {
+        signature: 'abstract recover(signal: AbortSignal): Promise<MemoryRecoveryResult>',
+        description: 'Recover interrupted durable operations and pointer state.',
+        parameters: [{ name: 'signal', description: 'Cancellation for bounded recovery I/O.' }],
+        returns: 'Recovery counts and whether due work remains.',
+      },
+      {
+        signature: 'abstract getActiveCleanRebuild(): Promise<MemoryRebuild | undefined>',
+        description: 'Read the unfinished clean rebuild, if one exists.',
+        parameters: [],
+        returns: 'Durable progress used to bypass ordinary age and idle discovery limits.',
+      },
+      {
+        signature: 'abstract reportCleanRebuildDiscovery(progress: CleanRebuildDiscoveryProgress): Promise<void>',
+        description: 'Commit one bounded all-retained discovery pass.',
+        parameters: [{ name: 'progress', description: 'Absolute progress counters for the currently active rebuild.' }],
+      },
+      {
+        signature: 'abstract registerSourceRanges(ranges: readonly RegisterSourceRange[]): Promise<RegisterSourceRangeResult>',
+        description: 'Idempotently register completed interactive source ranges.',
+        parameters: [{ name: 'ranges', description: 'Frozen Session ranges discovered by the scheduler.' }],
+        returns: 'Inserted and already-known counts.',
+      },
+      {
+        signature: 'abstract claimPhase1(request: Phase1ClaimRequest): Promise<Phase1Claim | undefined>',
+        description: 'Claim one due Phase 1 job.',
+        parameters: [{ name: 'request', description: 'Current time, lease duration, and attempt limit.' }],
+        returns: 'Owned claim, or `undefined` when none is due.',
+      },
+      {
+        signature: 'abstract beginPhase1Attempt(claim: Phase1Claim): Promise<Phase1Attempt>',
+        description: 'Open one durable Phase 1 attempt.',
+        parameters: [{ name: 'claim', description: 'Current owned source claim.' }],
+        returns: 'Durable attempt identity.',
+      },
+      {
+        signature: 'abstract recordPhase1Request(request: RecordedPhase1Request): Promise<void>',
+        description: 'Persist the exact request before network dispatch.',
+        parameters: [{ name: 'request', description: 'Frozen request audit and byte count.' }],
+      },
+      {
+        signature: 'abstract recordPhase1Result(result: RecordedPhase1Result): Promise<void>',
+        description: 'Persist the observed result before applying candidates.',
+        parameters: [{ name: 'result', description: 'Complete observed result or bounded overflow prefix.' }],
+      },
+      {
+        signature: 'abstract commitPhase1Outcome(claim: Phase1Claim, outcome: Phase1Outcome): Promise<void>',
+        description: 'Atomically apply a validated Phase 1 outcome and source watermarks.',
+        parameters: [{ name: 'claim', description: 'Current owned source claim.' }, { name: 'outcome', description: 'Validated candidates or terminal range outcome.' }],
+      },
+      {
+        signature: 'abstract claimPhase2(request: Phase2ClaimRequest): Promise<Phase2Claim | undefined>',
+        description: 'Claim a frozen complete source selection or retry a due Phase 2 job.',
+        parameters: [{ name: 'request', description: 'Current time, lease, whole-source capacity, and attempt limits.' }],
+        returns: 'Owned consolidation claim, or `undefined` when none is due.',
+      },
+      {
+        signature: 'abstract createPhase2Workspace(claim: Phase2Claim): Promise<Phase2Workspace>',
+        description: 'Create one isolated staging workspace.',
+        parameters: [{ name: 'claim', description: 'Current owned consolidation claim.' }],
+        returns: 'Opaque rooted workspace handle and role policy.',
+      },
+      {
+        signature: 'abstract openMaintenanceSession(claim: Phase2Claim): Promise<MaintenanceSessionBinding>',
+        description: 'Create or resume the private maintenance transcript.',
+        parameters: [{ name: 'claim', description: 'Current owned consolidation claim with a workspace.' }],
+        returns: 'Private Session binding without its disk location.',
+      },
+      {
+        signature: 'abstract allocateGeneration(claim: Phase2Claim): Promise<MaterializingGeneration>',
+        description: 'Allocate a generation identity and monotonic publish sequence.',
+        parameters: [{ name: 'claim', description: 'Current owned consolidation claim after the Agent settles.' }],
+        returns: 'Materializing generation handle.',
+      },
+      {
+        signature: 'abstract validateAndPrepareGeneration(request: PrepareGenerationRequest): Promise<PreparedGeneration>',
+        description: 'Validate staging output and persist an immutable prepared generation.',
+        parameters: [{ name: 'request', description: 'Claim, workspace, allocated generation, and transcript identity.' }],
+        returns: 'Prepared immutable generation handle.',
+      },
+      {
+        signature: 'abstract publishGeneration(request: PublishGenerationRequest): Promise<PublishedGeneration>',
+        description: 'Publish and finalize one prepared generation behind a fencing check.',
+        parameters: [{ name: 'request', description: 'Current claim and prepared generation handle.' }],
+        returns: 'Published generation identity and sequence.',
+      },
+      {
+        signature: 'abstract renewLease(request: RenewMemoryLeaseRequest): Promise<MemoryLease>',
+        description: 'Renew a currently owned lease.',
+        parameters: [{ name: 'request', description: 'Phase, job, owner, current time, and lease duration.' }],
+        returns: 'Renewed lease.',
+      },
+      {
+        signature: 'abstract recordFailure(request: MemoryFailureRecord): Promise<MemoryFailureDisposition>',
+        description: 'Persist and classify one operational failure.',
+        parameters: [{ name: 'request', description: 'Owned failure identity, category, message, and optional retry deadline.' }],
+        returns: 'Retry or terminal disposition committed by the Store.',
+      },
+      {
+        signature: 'abstract prune(request: MemoryPruneRequest): Promise<MemoryPruneResult>',
+        description: 'Perform bounded retention cleanup.',
+        parameters: [{ name: 'request', description: 'Current time plus row and byte limits.' }],
+        returns: 'Removed audit, snapshot, generation, and byte counts.',
       },
     ],
   },
@@ -1048,6 +1401,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: '`ctx.planMode`: owns logged plan state, applies and narrates selected state at step start, the `plan:policy` section, the `/plan` command, and the stable exit tool. UIs observe committed flips through `session/event`; there is no live mirror.',
     methods: [
       {
+        signature: 'observeApprovals(observe: (request: PlanApprovalRequest) => PlanApprovalObserver): () => void',
+        description: 'Observe plan approval without treating a mode toggle as authorization.',
+        parameters: [{ name: 'observe', description: 'Captures live guards before a user reviews the exact plan.' }],
+        returns: 'Disposer that removes the observer for future reviews.',
+      },
+      {
         signature: 'get(agent: Agent): { active: boolean; pending?: boolean }',
         description: 'Read the logged plan state and any selected state awaiting the next accepted in-turn pre-step.',
         parameters: [{ name: 'agent', description: 'The agent to read.' }],
@@ -1058,6 +1417,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Select whether plan mode should be active. Between turns the method appends the change immediately because no in-turn pre-step will run until another prompt starts a turn. The open-turn fold is the idle signal: agent status stays `running` through post-turn checkpointing, when no further in-turn pre-step runs. During an open turn the selection remains pending until the next accepted in-turn pre-step. Repeated selection of the current or already-pending state is a no-op.',
         parameters: [{ name: 'agent', description: 'The agent to switch.' }, { name: 'active', description: 'Whether plan mode should be active.' }],
         returns: 'what happened: `committed` (logged now), `queued` (awaiting the next accepted in-turn pre-step), `cancelled` (an opposite pending selection was cleared; the logged state already matches), or `noop` (already in that state).',
+      },
+    ],
+  },
+  {
+    key: 'progressIntegrityObserver',
+    summary: 'Serial per-Agent observer; Enforce pauses after a validated event-triggered verdict.',
+    description: 'Serial per-Agent observer; Enforce pauses after a validated event-triggered verdict.',
+    methods: [
+      {
+        signature: 'async whenSettled(agent: Agent): Promise<void>',
+        description: 'Wait until already queued observations settle.',
+        parameters: [{ name: 'agent', description: 'Root Agent whose observation queue must become idle.' }],
       },
     ],
   },
@@ -1848,6 +2219,83 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'taskContract',
+    summary: 'Durable owner of the Session requirement ledger.',
+    description: 'Durable owner of the Session requirement ledger.',
+    methods: [
+      {
+        signature: 'snapshot(session: Session): TaskContractSnapshot',
+        description: 'Read current requirements and the latest formal plan approval.',
+        parameters: [{ name: 'session', description: 'Session whose append-only events are projected.' }],
+        returns: 'Current requirement ledger projection.',
+      },
+      {
+        signature: 'originalInputs(snapshot: TaskContractSnapshot, turn: number): readonly RequirementInputRecord[]',
+        description: 'Select source messages for uncancelled requirements plus newly received input in a delivery Turn.',
+        parameters: [{ name: 'snapshot', description: 'Current requirement ledger projection.' }, { name: 'turn', description: 'Delivery Turn whose newly received input remains relevant.' }],
+        returns: 'Relevant immutable user-input records.',
+      },
+      {
+        signature: 'nextStepRevision(session: Session): number',
+        description: 'Read the latest next-step steering sequence; next-turn queue entries are excluded.',
+        parameters: [{ name: 'session', description: 'Session containing steering events.' }],
+        returns: 'Sequence number, or -1 when no next-step steering exists.',
+      },
+      {
+        signature: 'update(session: Session, baseRevision: number, sourceMessageIds: readonly MessageId[], updates: readonly RequirementUpdate[]): number',
+        description: 'Append one validated update batch with compare-and-swap revision semantics.',
+        parameters: [{ name: 'session', description: 'Session that owns the requirement ledger.' }, { name: 'baseRevision', description: 'Revision captured before model dispatch.' }, { name: 'sourceMessageIds', description: 'User messages the parser was allowed to cite.' }, { name: 'updates', description: 'Validated requirement changes to append.' }],
+        returns: 'Resulting ledger revision.',
+      },
+    ],
+  },
+  {
+    key: 'taskExecutionControl',
+    summary: 'Coordinates Gate and Observer holds at the existing tool execution point.',
+    description: 'Coordinates Gate and Observer holds at the existing tool execution point.',
+    methods: [
+      {
+        signature: 'snapshot(agent: Agent): TaskExecutionSnapshot',
+        description: 'Reconstruct the latest Session execution state.',
+        parameters: [{ name: 'agent', description: 'Agent whose Session owns the execution state.' }],
+        returns: 'Latest persisted state or the initial running state.',
+      },
+      {
+        signature: 'restrict(agent: Agent, mode: Exclude<TaskExecutionMode, \'running\'>, reason: string): void',
+        description: 'Enter repair or pause without resetting its budget.',
+        parameters: [{ name: 'agent', description: 'Agent whose task-tool execution is restricted.' }, { name: 'mode', description: 'Repair or hold mode to enter.' }, { name: 'reason', description: 'User-visible reason for the restriction.' }],
+      },
+      {
+        signature: 'waitForObservation(agent: Agent, observation: Promise<void>): void',
+        description: 'Register the observation barrier for the next task-tool dispatch.',
+        parameters: [{ name: 'agent', description: 'Agent whose next dispatch must wait.' }, { name: 'observation', description: 'Promise for the latest required observation.' }],
+      },
+      {
+        signature: 'finishRepair(agent: Agent): void',
+        description: 'Release an answer-repair restriction after the Reviewer accepts the replacement.',
+        parameters: [{ name: 'agent', description: 'Agent whose accepted repair resumes ordinary execution.' }],
+      },
+      {
+        signature: 'canCommit(agent: Agent): boolean',
+        description: 'Check restrictions in the synchronous final commit callback.',
+        parameters: [{ name: 'agent', description: 'Agent attempting to commit a candidate answer.' }],
+        returns: 'Whether deterministic execution state permits commit.',
+      },
+      {
+        signature: 'registerRecoveryProbe(name: string, probe: RecoveryProbe): () => void',
+        description: 'Register a provider-owned read-only recovery query.',
+        parameters: [{ name: 'name', description: 'Tool name whose unknown dispatch can be queried.' }, { name: 'probe', description: 'Provider-owned status query implementation.' }],
+        returns: 'Registration disposer.',
+      },
+      {
+        signature: 'async verifyUnknown(agent: Agent, callId: CallId, signal: AbortSignal): Promise<boolean>',
+        description: 'Verify one unknown call without reopening general Worker tools.',
+        parameters: [{ name: 'agent', description: 'Agent whose Session contains the unmatched dispatch.' }, { name: 'callId', description: 'Dispatch identity to query.' }, { name: 'signal', description: 'Caller cancellation signal.' }],
+        returns: 'Whether the provider confirmed that the dispatch settled.',
+      },
+    ],
+  },
+  {
     key: 'terminals',
     summary: 'In-process registry for replaceable PTY backends and exact-Agent sessions.',
     description: 'In-process registry for replaceable PTY backends and exact-Agent sessions.',
@@ -2285,6 +2733,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'sessionId', description: 'the session whose composition changed.' }, { name: 'agentPreset', description: 'the preset recorded by the committed selection.' }],
   },
   {
+    name: 'agent/assistant-delivery',
+    mode: 'waterfall',
+    signature: '\'agent/assistant-delivery\'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; signal: AbortSignal }, next: () => Promise<AssistantDeliveryDecision>): Promise<AssistantDeliveryDecision>',
+    summary: 'Select live publication or a caller-owned durable writer before the provider stream starts.',
+    description: 'Select live publication or a caller-owned durable writer before the provider stream starts. The default preserves ordinary chunk streaming.',
+    parameters: [{ name: 'payload', description: '.signal - the current turn\'s cancellation signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
+  },
+  {
     name: 'agent/created',
     mode: 'emit',
     signature: '\'agent/created\'(this: Scoped<Agent>, payload: { agent: Agent }): void',
@@ -2307,6 +2763,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'A step or turn errored.',
     description: 'A step or turn errored. The machine reports a failure here even when the error has no in-turn position for a durable record.',
     parameters: [{ name: 'payload', description: '.error - the failure, verbatim. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
+  },
+  {
+    name: 'agent/final-candidate',
+    mode: 'waterfall',
+    signature: '\'agent/final-candidate\'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; message: AssistantMessage; usage: TokenUsage | undefined; finish: AssistantCandidateFinish; sourceEventSeqs: readonly number[]; signal: AbortSignal }, next: () => Promise<FinalCandidateDecision>): Promise<FinalCandidateDecision>',
+    summary: 'Decide whether a deferred response without tool calls may enter the transcript.',
+    description: 'Decide whether a deferred response without tool calls may enter the transcript. A commit validator runs synchronously immediately before the ordinary assistant event append. Its optional `committed` callback runs synchronously after that append; `continue` requires pending next-step input supplied by the listener.',
+    parameters: [{ name: 'payload', description: '.signal - the current turn\'s cancellation signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
   },
   {
     name: 'agent/inbox/claimed',
@@ -2355,6 +2819,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'Handle one failed model-request attempt before the loop retries or closes its step.',
     description: 'Handle one failed model-request attempt before the loop retries or closes its step. A listener returns `{ kind: \'retry\' }` without calling `next()` when it owns recovery, or calls `next()` to delegate. The default `undefined` leaves the failure terminal.',
     parameters: [{ name: 'payload', description: '.signal - the turn abort signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
+  },
+  {
+    name: 'agent/request-starting',
+    mode: 'emit',
+    signature: '\'agent/request-starting\'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; signal: AbortSignal }): void',
+    summary: 'Mark the synchronous start of one model-request attempt after the Step\'s durable inputs are committed and before request assembly begins.',
+    description: 'Mark the synchronous start of one model-request attempt after the Step\'s durable inputs are committed and before request assembly begins. A retry emits this event again for the replacement attempt.',
+    parameters: [{ name: 'payload', description: '.signal - the current turn\'s cancellation signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
   },
   {
     name: 'agent/session-start',
@@ -2509,6 +2981,46 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'options', description: 'the full request. A LOOP-built request carries the process-local {@link markAgentLoopRequest} identity and arrives deep-frozen (mutation throws): its content is a pure function of the session log (the reconstructability Agent Note), so listeners read it, never rewrite it. Hand-built calls do not carry that marker; their messages already obey the immutable creation contract.' }],
   },
   {
+    name: 'memory/changed',
+    mode: 'parallel',
+    signature: '\'memory/changed\'(change: { changeSequence: number; generationId?: MemoryGenerationId }): void',
+    summary: 'A public memory baseline changed; listeners may refresh a previously read generation or profile state.',
+    description: 'A public memory baseline changed; listeners may refresh a previously read generation or profile state.',
+    parameters: [{ name: 'change', description: 'Committed change sequence and current generation identity.' }],
+  },
+  {
+    name: 'memory/pipeline-work-available',
+    mode: 'parallel',
+    signature: '\'memory/pipeline-work-available\'(reason: { kind: \'source\' | \'retry\' | \'phase2\' | \'ad-hoc\' | \'manual-scan\' | \'manual-consolidation\' | \'clean-rebuild\' | \'quarantine\' | \'recovery\' }): void',
+    summary: 'Durable pipeline work became eligible; maintenance triggers may coalesce a scheduler wake.',
+    description: 'Durable pipeline work became eligible; maintenance triggers may coalesce a scheduler wake.',
+    parameters: [{ name: 'reason', description: 'Durable work category that became eligible.' }],
+  },
+  {
+    name: 'memory/quota-remaining',
+    mode: 'bail',
+    signature: '\'memory/quota-remaining\'(query: MemoryQuotaQuery): number | undefined',
+    summary: 'Returns the remaining provider quota percentage when the active route exposes that telemetry.',
+    description: 'Returns the remaining provider quota percentage when the active route exposes that telemetry.',
+    parameters: [{ name: 'query', description: 'Provider and model selected for a background memory call.' }],
+  },
+  {
+    name: 'memory/runtime-settings-changed',
+    mode: 'parallel',
+    signature: '\'memory/runtime-settings-changed\'(settings: MemoryRuntimeSettings): void',
+    summary: 'Profile-wide live scheduler settings committed; schedulers and management consumers must refresh.',
+    description: 'Profile-wide live scheduler settings committed; schedulers and management consumers must refresh.',
+    parameters: [{ name: 'settings', description: 'Complete committed settings and optimistic revision.' }],
+  },
+  {
+    name: 'memory/session-controls-changed',
+    mode: 'parallel',
+    signature: '\'memory/session-controls-changed\'(change: { sessionId: SessionId; controls: SessionMemoryControls }): void',
+    summary: 'Explicit controls for one Session committed; listeners may refresh prompt or scheduling policy.',
+    description: 'Explicit controls for one Session committed; listeners may refresh prompt or scheduling policy.',
+    parameters: [{ name: 'change', description: 'Session identity and complete committed controls.' }],
+  },
+  {
     name: 'session-telemetry/record',
     mode: 'waterfall',
     signature: '\'session-telemetry/record\'(record: SessionTelemetryRecord, next: () => SessionTelemetryRecord): SessionTelemetryRecord',
@@ -2637,6 +3149,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'dispatch', description: 'the parent execution, sub-call identity, and the settled content to log.' }],
   },
   {
+    name: 'tools/dispatch-ready',
+    mode: 'waterfall',
+    signature: '\'tools/dispatch-ready\'(this: Scoped<ToolRuntime>, exec: ToolExecution, next: () => Promise<void>): Promise<void>',
+    summary: 'Persist dispatch intent after around-dispatch wrappers and before the body.',
+    description: 'Persist dispatch intent after around-dispatch wrappers and before the body. The registry awaits all listeners, then rechecks cancellation and monotonic guards. Completion of this hook is not proof that the body ran. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent\'s calls.',
+    parameters: [{ name: 'exec', description: 'Identity-protected execution, including nested calls.' }],
+  },
+  {
     name: 'tools/execute',
     mode: 'waterfall',
     signature: '\'tools/execute\'(this: Scoped<ToolRuntime>, exec: ToolDispatchExecution, next: () => Promise<ToolExecutionResult>): Promise<ToolExecutionResult>',
@@ -2725,6 +3245,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AdapterRegistrationHandle {\n    (): void;\n    replace(providers: string[]): void;\n}',
   },
   {
+    name: 'AdHocNote',
+    declaration: 'export interface AdHocNote {\n    readonly id: AdHocNoteId;\n    readonly revision: number;\n    readonly action: MemoryUpdateAction;\n    readonly processingStatus: NoteProcessingStatus;\n    readonly authorityStatus: NoteAuthorityStatus;\n    readonly content: string;\n    readonly sourceUserText?: string;\n    readonly target?: string;\n    readonly origin: \'ui\' | \'conversation\';\n    readonly sourceSessionId?: SessionId;\n    readonly sourceTurn?: string;\n    readonly sourceUserEventSeq?: number;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n    readonly appliedGenerationId?: MemoryGenerationId;\n    readonly disposition?: string;\n}',
+  },
+  {
+    name: 'AdHocNoteListRequest',
+    declaration: 'export interface AdHocNoteListRequest {\n    readonly cursor?: string;\n    readonly limit?: number;\n    readonly processingStatuses?: readonly NoteProcessingStatus[];\n    readonly authorityStatuses?: readonly NoteAuthorityStatus[];\n}',
+  },
+  {
+    name: 'AdHocNotePage',
+    declaration: 'export interface AdHocNotePage {\n    readonly items: readonly AdHocNote[];\n    readonly nextCursor?: string;\n}',
+  },
+  {
     name: 'Agent',
     declaration: 'export interface Agent {\n    readonly id: SessionId;\n    readonly options: AgentOptions;\n    readonly session: Session;\n    readonly inbox: Inbox;\n    readonly status: AgentStatus;\n    readonly ctx: Context;\n    cancel(cause: AgentCancelCause, options?: CancelOptions): void;\n    whenIdle(): Promise<void>;\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n    send(message: UserMessage, target: InboxTarget, wakeup: boolean): void;\n    followup(message: UserMessage): void;\n    steer(message: UserMessage): void;\n    inject(message: UserMessage): void;\n}',
   },
@@ -2777,6 +3309,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export class ApprovalService extends Service {\n    static Config: z<Config>;\n    constructor(ctx: Context, public config: Config);\n    setPolicy(agent: Agent, policy: ApprovalPolicy): void;\n    async request(req: ApprovalRequest): Promise<ApprovalOutcome>;\n    overrideOf(session: Session): ApprovalPolicy | undefined;\n}',
   },
   {
+    name: 'ApprovedPlanRecord',
+    declaration: 'export interface ApprovedPlanRecord {\n    readonly callId: CallId;\n    readonly text: string;\n    readonly review: EventRef;\n    readonly approval: EventRef;\n    readonly requirementRevisions?: readonly {\n        readonly id: RequirementId;\n        readonly revision: number;\n    }[];\n    readonly applicability?: \'current\' | \'needs-reconciliation\';\n    readonly changedRequirementIds?: readonly RequirementId[];\n}',
+  },
+  {
     name: 'AskUserQuestionAnswer',
     declaration: 'export interface AskUserQuestionAnswer {\n    answers: AskUserQuestionAnswerItem[];\n}',
   },
@@ -2813,6 +3349,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AssembledSection {\n    name: string;\n    text: string;\n}',
   },
   {
+    name: 'AssistantCandidateFinish',
+    declaration: 'export type AssistantCandidateFinish = \'completed\' | \'max-tokens\';',
+  },
+  {
+    name: 'AssistantDeliveryDecision',
+    declaration: 'export type AssistantDeliveryDecision = {\n    kind: \'live\';\n} | {\n    kind: \'deferred\';\n    writer: AssistantStagingWriter;\n};',
+  },
+  {
     name: 'AssistantMessage',
     declaration: 'export interface AssistantMessage extends Message {\n    readonly role: \'assistant\';\n    readonly source: ModelMessageSource;\n}',
   },
@@ -2821,8 +3365,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AssistantProvenance {\n    provider: string;\n    model: string;\n    replayState?: unknown;\n}',
   },
   {
+    name: 'AssistantStagingWriter',
+    declaration: 'export interface AssistantStagingWriter {\n    append(chunk: StreamChunk): readonly number[];\n    complete(message: AssistantMessage, usage: TokenUsage | undefined, finish: AssistantCandidateFinish): readonly number[];\n    committed?(): void;\n    abort(reason: unknown): void;\n}',
+  },
+  {
     name: 'AttachmentId',
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
+  },
+  {
+    name: 'AuditedLlmCallId',
+    declaration: 'export type AuditedLlmCallId = Branded<\'AuditedLlmCallId\'>;',
   },
   {
     name: 'BackendRegistry',
@@ -2847,6 +3399,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CancelOptions',
     declaration: 'export interface CancelOptions {\n    keepInbox?: boolean | undefined;\n}',
+  },
+  {
+    name: 'CleanRebuildDiscoveryProgress',
+    declaration: 'export interface CleanRebuildDiscoveryProgress {\n    readonly rebuildId: MemoryRebuildId;\n    readonly totalSessions: number;\n    readonly scannedSessions: number;\n    readonly scanCursor: number;\n    readonly waitingSessions: number;\n    readonly scanComplete: boolean;\n}',
   },
   {
     name: 'ClientResponse',
@@ -2883,6 +3439,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CodeRunResult',
     declaration: 'export interface CodeRunResult {\n    value?: CodeJsonValue;\n    logs: string[];\n    error?: CodeRunFailure;\n}',
+  },
+  {
+    name: 'CodexStructuredCallRequest',
+    declaration: 'export interface CodexStructuredCallRequest {\n    readonly purpose: \'memory-phase1\' | \'memory-phase2\';\n    readonly model: string;\n    readonly reasoningEffort: string;\n    readonly prompt: string;\n    readonly outputSchema: Record<string, JsonValue>;\n    readonly maxResultBytes: number;\n}',
+  },
+  {
+    name: 'CodexStructuredResult',
+    declaration: 'export interface CodexStructuredResult {\n    readonly value: JsonValue | null;\n    readonly finishReason: \'completed\' | \'failed\' | \'cancelled\' | \'result-overflow\' | \'unexpected-tool-use\';\n    readonly usage: JsonValue | null;\n    readonly error: string | null;\n}',
   },
   {
     name: 'CollectedOutput',
@@ -3010,7 +3574,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateAgentOptions',
-    declaration: 'export interface CreateAgentOptions {\n    readonly sessionId: SessionId;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly seedLength?: number;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n    readonly seed?: readonly SessionEvent[];\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
+    declaration: 'export interface CreateAgentOptions {\n    readonly sessionId: SessionId;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly seedLength?: number;\n        readonly purpose?: import(\'@deepseek-ai/dsh-session\').SessionPurpose;\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n    readonly seed?: readonly SessionEvent[];\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
   },
   {
     name: 'CreateGoalRequest',
@@ -3022,7 +3586,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateSessionOptions',
-    declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly seedLength?: number;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n}',
+    declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly seedLength?: number;\n        readonly purpose?: SessionPurpose;\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n}',
   },
   {
     name: 'CreateTeamTaskRequest',
@@ -3035,6 +3599,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CredentialRef',
     declaration: 'export type CredentialRef = Branded<\'CredentialRef\'>;',
+  },
+  {
+    name: 'DeleteMemoryItemRequest',
+    declaration: 'export interface DeleteMemoryItemRequest {\n    readonly target: MemoryItemTarget;\n}',
   },
   {
     name: 'DiffCallView',
@@ -3149,6 +3717,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
   },
   {
+    name: 'EventRef',
+    declaration: 'export type EventRef = {\n    readonly kind: \'local\';\n    readonly seq: number;\n} | {\n    readonly kind: \'external\';\n    readonly sessionId: SessionId;\n    readonly seq: number;\n};',
+  },
+  {
+    name: 'ExecutionIncarnation',
+    declaration: 'export type ExecutionIncarnation = Branded<\'ExecutionIncarnation\'>;',
+  },
+  {
     name: 'FileDiff',
     declaration: 'export interface FileDiff {\n    path: string;\n    oldText: string | null;\n    newText: string;\n}',
   },
@@ -3159,6 +3735,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FileReferenceCandidate',
     declaration: 'export interface FileReferenceCandidate {\n    path: string;\n    kind: \'file\' | \'directory\';\n}',
+  },
+  {
+    name: 'FinalCandidateDecision',
+    declaration: 'export type FinalCandidateDecision = {\n    kind: \'commit\';\n    validate?: () => boolean;\n    committed?: () => void;\n} | {\n    kind: \'continue\';\n};',
   },
   {
     name: 'FinishReason',
@@ -3214,7 +3794,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GenerateOptions',
-    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n}',
+    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    audit?: {\n        callId: Branded<\'AuditedLlmCallId\'>;\n        attempt: number;\n    };\n    purpose?: \'compaction\' | \'session-title\' | \'memory-extraction\' | \'memory-consolidation\' | \'requirement-change-parsing\' | \'final-candidate-review\' | \'final-shadow-review\' | \'progress-integrity-observation\';\n}',
   },
   {
     name: 'GenericCallView',
@@ -3342,7 +3922,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'JobStart',
-    declaration: 'export interface JobStart {\n    kind: JobKind;\n    label: string;\n    outputLimitBytes?: number;\n    owner?: Agent;\n    run(): JobHooks;\n}',
+    declaration: 'export interface JobStart {\n    kind: JobKind;\n    label: string;\n    outputLimitBytes?: number;\n    visibility?: \'public\' | \'internal\';\n    owner?: Agent;\n    run(): JobHooks;\n}',
   },
   {
     name: 'JobStatus',
@@ -3385,8 +3965,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n}',
   },
   {
+    name: 'LlmAccountBalance',
+    declaration: 'export interface LlmAccountBalance {\n    currency: string;\n    total: string;\n    granted?: string;\n    toppedUp?: string;\n}',
+  },
+  {
     name: 'LlmAdapter',
     declaration: 'export abstract class LlmAdapter {\n    providerInfo(provider: string): LlmProviderInfo;\n    providerRetryPolicy(_provider: string): ResolvedRetryPolicy | undefined;\n    listModels(_provider: string): Promise<readonly LlmModelInfo[]>;\n    resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    abstract stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
+  },
+  {
+    name: 'LlmBalanceRequest',
+    declaration: 'export interface LlmBalanceRequest {\n    signal?: AbortSignal;\n}',
   },
   {
     name: 'LlmCallConfig',
@@ -3438,7 +4026,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmRuntime',
-    declaration: 'export class LlmRuntime extends Service {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
+    declaration: 'export class LlmRuntime extends Service {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest): Promise<LlmDiscoveredModel[]>;\n    registerBalanceQuery(settingsNs: string, query: (request: LlmBalanceRequest) => Promise<readonly LlmAccountBalance[]>): () => void;\n    async queryBalance(settingsNs: string, request: LlmBalanceRequest = {}): Promise<LlmAccountBalance[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
   },
   {
     name: 'LspHover',
@@ -3481,8 +4069,208 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface LspRange {\n    readonly start: LspPosition;\n    readonly end: LspPosition;\n}',
   },
   {
+    name: 'MaintenanceSessionBinding',
+    declaration: 'export interface MaintenanceSessionBinding {\n    readonly sessionId: SessionId;\n    readonly persistence: MaintenanceSessionPersistence;\n}',
+  },
+  {
+    name: 'MaintenanceSessionPersistence',
+    declaration: 'export interface MaintenanceSessionPersistence {\n    flush(): Promise<void>;\n}',
+  },
+  {
     name: 'ManualCompactAgentContext',
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
+  },
+  {
+    name: 'MaterializingGeneration',
+    declaration: 'export interface MaterializingGeneration {\n    readonly id: MaterializingGenerationId;\n    readonly generationId: MemoryGenerationId;\n    readonly publishSequence: number;\n    readonly parentGenerationId?: MemoryGenerationId;\n}',
+  },
+  {
+    name: 'MaterializingGenerationId',
+    declaration: 'export type MaterializingGenerationId = Branded<\'MaterializingGenerationId\'>;',
+  },
+  {
+    name: 'MemoryAttemptId',
+    declaration: 'export type MemoryAttemptId = Branded<\'MemoryAttemptId\'>;',
+  },
+  {
+    name: 'MemoryCandidate',
+    declaration: 'export interface MemoryCandidate {\n    readonly candidateId: MemoryCandidateId;\n    readonly rawMemory: string;\n    readonly rolloutSummary: string;\n    readonly rolloutSlug?: string;\n    readonly evidenceIds: readonly MemoryEvidenceId[];\n}',
+  },
+  {
+    name: 'MemoryCandidateId',
+    declaration: 'export type MemoryCandidateId = Branded<\'MemoryCandidateId\'>;',
+  },
+  {
+    name: 'MemoryClaimToken',
+    declaration: 'export type MemoryClaimToken = Branded<\'MemoryClaimToken\'>;',
+  },
+  {
+    name: 'MemoryEvidenceId',
+    declaration: 'export type MemoryEvidenceId = Branded<\'MemoryEvidenceId\'>;',
+  },
+  {
+    name: 'MemoryFailureCategory',
+    declaration: 'export type MemoryFailureCategory = \'cancelled\' | \'storage-busy\' | \'storage-failure\' | \'provider-timeout\' | \'provider-rate-limit\' | \'provider-failure\' | \'output-budget-exhausted\' | \'invalid-model-output\' | \'result-overflow\' | \'unexpected-tool-use\' | \'stale\' | \'validation\' | \'capacity\';',
+  },
+  {
+    name: 'MemoryFailureDisposition',
+    declaration: 'export type MemoryFailureDisposition = {\n    readonly kind: \'retry\';\n    readonly nextAttemptAt: number;\n} | {\n    readonly kind: \'stale\';\n} | {\n    readonly kind: \'quarantined\';\n    readonly quarantineId: QuarantineRangeId;\n} | {\n    readonly kind: \'cancelled\';\n};',
+  },
+  {
+    name: 'MemoryFailureRecord',
+    declaration: 'export interface MemoryFailureRecord {\n    readonly phase: \'phase1\' | \'phase2\';\n    readonly jobId: Phase1JobId | Phase2JobId;\n    readonly attemptId?: MemoryAttemptId;\n    readonly ownerToken: MemoryClaimToken;\n    readonly category: MemoryFailureCategory;\n    readonly message: string;\n    readonly now: number;\n    readonly retryAt?: number;\n}',
+  },
+  {
+    name: 'MemoryFileReadRequest',
+    declaration: 'export interface MemoryFileReadRequest {\n    readonly generationId?: MemoryGenerationId;\n    readonly path: string;\n    readonly offset?: number;\n    readonly maxBytes?: number;\n}',
+  },
+  {
+    name: 'MemoryFileReadResult',
+    declaration: 'export interface MemoryFileReadResult {\n    readonly generationId: MemoryGenerationId;\n    readonly path: string;\n    readonly text: string;\n    readonly offset: number;\n    readonly nextOffset?: number;\n    readonly totalBytes: number;\n    readonly sha256: string;\n}',
+  },
+  {
+    name: 'MemoryGenerationFileRole',
+    declaration: 'export type MemoryGenerationFileRole = \'summary\' | \'catalog\' | \'raw\' | \'rollout\' | \'skill\' | \'ad-hoc-note\' | \'manifest\';',
+  },
+  {
+    name: 'MemoryItem',
+    declaration: 'export interface MemoryItem {\n    readonly id: MemoryItemId;\n    readonly kind: \'profile\' | \'preference\' | \'general-tip\' | \'task-group\';\n    readonly title: string;\n    readonly content: string;\n    readonly target: MemoryItemTarget;\n    readonly sourceIds: readonly string[];\n    readonly status: \'active\' | \'pending-update\' | \'pending-delete\';\n    readonly pendingNoteId?: AdHocNoteId;\n    readonly origin: \'automatic\' | \'explicit\' | \'mixed\';\n}',
+  },
+  {
+    name: 'MemoryItemListRequest',
+    declaration: 'export interface MemoryItemListRequest {\n    readonly generationId?: MemoryGenerationId;\n    readonly cursor?: string;\n    readonly limit?: number;\n}',
+  },
+  {
+    name: 'MemoryItemPage',
+    declaration: 'export interface MemoryItemPage {\n    readonly generationId?: MemoryGenerationId;\n    readonly items: readonly MemoryItem[];\n    readonly sourceUsage: readonly MemorySourceUsage[];\n    readonly nextCursor?: string;\n}',
+  },
+  {
+    name: 'MemoryItemTarget',
+    declaration: 'export interface MemoryItemTarget {\n    readonly generationId: MemoryGenerationId;\n    readonly path: string;\n    readonly startLine: number;\n    readonly endLine: number;\n    readonly contentSha256: string;\n}',
+  },
+  {
+    name: 'MemoryLease',
+    declaration: 'export interface MemoryLease {\n    readonly ownerToken: MemoryClaimToken;\n    readonly leasedUntil: number;\n    readonly attempt: number;\n}',
+  },
+  {
+    name: 'MemoryListRequest',
+    declaration: 'export interface MemoryListRequest {\n    readonly sessionId: SessionId;\n    readonly limit?: number;\n}',
+  },
+  {
+    name: 'MemoryMaintenanceRun',
+    declaration: 'export interface MemoryMaintenanceRun {\n    readonly discovered: number;\n    readonly phase1Completed: number;\n    readonly phase2Completed: number;\n    readonly retried: number;\n    readonly quarantined: number;\n    readonly pruned: number;\n    readonly nextWakeAt?: number;\n}',
+  },
+  {
+    name: 'MemoryProfileControlPatch',
+    declaration: 'export interface MemoryProfileControlPatch {\n    readonly enabled?: boolean;\n    readonly useByDefault?: boolean;\n    readonly contributeByDefault?: boolean;\n}',
+  },
+  {
+    name: 'MemoryProfileState',
+    declaration: 'export interface MemoryProfileState {\n    readonly controlRevision: number;\n    readonly enabled: boolean;\n    readonly useByDefault: boolean;\n    readonly contributeByDefault: boolean;\n    readonly changeSequence: number;\n    readonly currentGenerationId?: MemoryGenerationId;\n    readonly currentPublishSequence?: number;\n    readonly generationStatus: \'none\' | \'ready\' | \'rebuild-required\';\n    readonly pendingPhase1: number;\n    readonly pendingPhase2: boolean;\n    readonly quarantineCount: number;\n    readonly totalBytes: number;\n    readonly rebuild?: MemoryRebuild;\n}',
+  },
+  {
+    name: 'MemoryPromptSkipReason',
+    declaration: 'export type MemoryPromptSkipReason = \'disabled\' | \'session-denied\' | \'no-generation\' | \'incompatible-generation\' | \'budget-too-small\' | \'assembly-excluded\';',
+  },
+  {
+    name: 'MemoryPromptSnapshot',
+    declaration: 'export interface MemoryPromptSnapshot {\n    readonly kind: \'available\';\n    readonly generationId: MemoryGenerationId;\n    readonly generationRoot: string;\n    readonly summary: string;\n    readonly summarySha256: string;\n    readonly leaseId: MemoryReadLeaseId;\n    readonly leaseExpiresAt: number;\n    readonly bytes: number;\n    readonly retainedItems: number;\n    readonly omittedItems: number;\n}',
+  },
+  {
+    name: 'MemoryPromptSnapshotRequest',
+    declaration: 'export interface MemoryPromptSnapshotRequest {\n    readonly sessionId: SessionId;\n    readonly maxSummaryBytes: number;\n    readonly leaseOwner: string;\n}',
+  },
+  {
+    name: 'MemoryPromptSnapshotResult',
+    declaration: 'export type MemoryPromptSnapshotResult = MemoryPromptSnapshot | {\n    readonly kind: \'skipped\';\n    readonly reason: MemoryPromptSkipReason;\n};',
+  },
+  {
+    name: 'MemoryPruneRequest',
+    declaration: 'export interface MemoryPruneRequest {\n    readonly now: number;\n    readonly maxRows: number;\n    readonly maxBytes: number;\n}',
+  },
+  {
+    name: 'MemoryPruneResult',
+    declaration: 'export interface MemoryPruneResult {\n    readonly auditAttempts: number;\n    readonly sourceSnapshots: number;\n    readonly generations: number;\n    readonly bytes: number;\n}',
+  },
+  {
+    name: 'MemoryQuarantineItem',
+    declaration: 'export interface MemoryQuarantineItem {\n    readonly id: QuarantineRangeId;\n    readonly phase: \'phase1\' | \'phase2\';\n    readonly reason: string;\n    readonly attempts: number;\n    readonly updatedAt: number;\n    readonly sessionId?: SessionId;\n    readonly fromSeq?: number;\n    readonly toSeq?: number;\n}',
+  },
+  {
+    name: 'MemoryQuarantineListRequest',
+    declaration: 'export interface MemoryQuarantineListRequest {\n    readonly cursor?: string;\n    readonly limit?: number;\n}',
+  },
+  {
+    name: 'MemoryQuarantinePage',
+    declaration: 'export interface MemoryQuarantinePage {\n    readonly items: readonly MemoryQuarantineItem[];\n    readonly nextCursor?: string;\n}',
+  },
+  {
+    name: 'MemoryQuotaQuery',
+    declaration: 'export interface MemoryQuotaQuery {\n    readonly provider: string;\n    readonly model: string;\n}',
+  },
+  {
+    name: 'MemoryReadRequest',
+    declaration: 'export interface MemoryReadRequest {\n    readonly sessionId: SessionId;\n    readonly path: string;\n    readonly maxBytes?: number;\n}',
+  },
+  {
+    name: 'MemoryRebuild',
+    declaration: 'export interface MemoryRebuild {\n    readonly sourceCompletedAfter: number;\n    readonly explicitNotePolicy: \'preserve-active\' | \'purge-all\';\n    readonly id: MemoryRebuildId;\n    readonly status: MemoryRebuildStatus;\n    readonly totalSessions: number;\n    readonly scannedSessions: number;\n    readonly scanCursor: number;\n    readonly extractedSessions: number;\n    readonly emptySessions: number;\n    readonly failedSessions: number;\n    readonly waitingSessions: number;\n    readonly modelCalls: number;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n    readonly finishedAt?: number;\n    readonly error?: string;\n}',
+  },
+  {
+    name: 'MemoryRebuildStatus',
+    declaration: 'export type MemoryRebuildStatus = \'queued\' | \'purging-old-state\' | \'scanning\' | \'extracting\' | \'waiting-for-idle\' | \'consolidating\' | \'validating\' | \'published\' | \'failed\' | \'cancelled\';',
+  },
+  {
+    name: 'MemoryRecoveryResult',
+    declaration: 'export interface MemoryRecoveryResult {\n    readonly recoveredJobs: number;\n    readonly finalizedGenerations: number;\n    readonly discardedStagingDirectories: number;\n    readonly workAvailable: boolean;\n}',
+  },
+  {
+    name: 'MemoryRuntimeSettings',
+    declaration: 'export interface MemoryRuntimeSettings extends MemoryRuntimeSettingsValues {\n    readonly revision: number;\n}',
+  },
+  {
+    name: 'MemoryRuntimeSettingsPatch',
+    declaration: 'export type MemoryRuntimeSettingsPatch = Partial<MemoryRuntimeSettingsValues>;',
+  },
+  {
+    name: 'MemoryRuntimeSettingsValues',
+    declaration: 'export interface MemoryRuntimeSettingsValues {\n    readonly extractionBackend: \'llm\' | \'codex\';\n    readonly consolidationBackend: \'llm\' | \'codex\';\n    readonly extractionReasoningEffort: string;\n    readonly rebuildLookbackMs: number;\n    readonly idleMs: number;\n    readonly maxSourceAgeMs: number;\n    readonly maxUnusedDays: number;\n    readonly minRemainingQuotaPercent: number;\n    readonly scanSessionsPerRun: number;\n    readonly maxRangesPerRun: number;\n    readonly maxPhase1ClaimsPerRun: number;\n    readonly phase1Concurrency: number;\n    readonly phase1LeaseMs: number;\n    readonly phase2LeaseMs: number;\n    readonly providerTimeoutMs: number;\n    readonly maxAttempts: number;\n    readonly retryBaseMs: number;\n    readonly maxCandidatesPerRange: number;\n    readonly maxPhase2Sources: number;\n    readonly maxEvidenceBytes: number;\n    readonly maxResultBytes: number;\n    readonly extractionProvider: string;\n    readonly extractionModel: string;\n    readonly extractionMaxTokens: number;\n    readonly consolidationProvider: string;\n    readonly consolidationModel: string;\n    readonly consolidationReasoningEffort: string;\n    readonly consolidationMaxTokens: number;\n    readonly promptSummaryMaxBytes: number;\n    readonly recallMaxPasses: number;\n    readonly recallMaxToolCalls: number;\n    readonly recallMaxDetailFiles: number;\n    readonly phase2MaxFileBytes: number;\n    readonly phase2SearchMaxFiles: number;\n    readonly phase2SearchMaxMatches: number;\n    readonly ski /* …truncated — full shape in source */',
+  },
+  {
+    name: 'MemorySearchHit',
+    declaration: 'export interface MemorySearchHit {\n    readonly generationId: MemoryGenerationId;\n    readonly path: string;\n    readonly line: number;\n    readonly heading?: string;\n    readonly snippet: string;\n    readonly citation: string;\n    readonly score: number;\n}',
+  },
+  {
+    name: 'MemorySearchRequest',
+    declaration: 'export interface MemorySearchRequest extends MemoryListRequest {\n    readonly query: string;\n}',
+  },
+  {
+    name: 'MemorySourceRangeId',
+    declaration: 'export type MemorySourceRangeId = Branded<\'MemorySourceRangeId\'>;',
+  },
+  {
+    name: 'MemorySourceUsage',
+    declaration: 'export interface MemorySourceUsage {\n    readonly sourceId: string;\n    readonly adoptedCount: number;\n    readonly lastAdoptedAt?: number;\n}',
+  },
+  {
+    name: 'MemoryTreeEntry',
+    declaration: 'export interface MemoryTreeEntry {\n    readonly path: string;\n    readonly role: MemoryGenerationFileRole;\n    readonly bytes: number;\n    readonly sha256: string;\n}',
+  },
+  {
+    name: 'MemoryTreePage',
+    declaration: 'export interface MemoryTreePage {\n    readonly generationId: MemoryGenerationId;\n    readonly items: readonly MemoryTreeEntry[];\n    readonly nextCursor?: string;\n}',
+  },
+  {
+    name: 'MemoryTreeRequest',
+    declaration: 'export interface MemoryTreeRequest {\n    readonly generationId?: MemoryGenerationId;\n    readonly cursor?: string;\n    readonly limit?: number;\n}',
+  },
+  {
+    name: 'MemoryUpdateAction',
+    declaration: 'export type MemoryUpdateAction = \'remember\' | \'update\' | \'forget\';',
+  },
+  {
+    name: 'MemoryWakeReason',
+    declaration: 'export type MemoryWakeReason = \'startup\' | \'root-session-startup\' | \'idle-deadline\' | \'retry-deadline\' | \'defer-deadline\' | \'lease-expiry\' | \'budget-window\' | \'configuration\' | \'session-controls\' | \'manual-scan\' | \'manual-consolidation\' | \'clean-rebuild\' | \'quarantine-retry\' | \'pipeline-work\';',
   },
   {
     name: 'Message',
@@ -3589,6 +4377,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelModalityMap {\n    text: \'text\';\n    image: \'image\';\n}',
   },
   {
+    name: 'NoteAuthorityStatus',
+    declaration: 'export type NoteAuthorityStatus = \'active\' | \'superseded\' | \'cleared\';',
+  },
+  {
+    name: 'NoteProcessingStatus',
+    declaration: 'export type NoteProcessingStatus = \'pending\' | \'claimed\' | \'applied\' | \'partial\' | \'unresolved\' | \'failed\';',
+  },
+  {
     name: 'ObjectJsonSchema',
     declaration: 'export type ObjectJsonSchema = JsonSchemaNode & {\n    type: \'object\';\n};',
   },
@@ -3597,12 +4393,80 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface OneShotSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'one-shot\';\n    readonly label?: string;\n}',
   },
   {
+    name: 'PendingTaskOperation',
+    declaration: 'export interface PendingTaskOperation {\n    readonly name: string;\n    readonly argumentsJson: string;\n    readonly callId: CallId;\n}',
+  },
+  {
     name: 'PermissionSelect',
     declaration: 'export interface PermissionSelect {\n    options: PresetOption[];\n    currentValue: string;\n}',
   },
   {
+    name: 'Phase1Attempt',
+    declaration: 'export interface Phase1Attempt {\n    readonly attemptId: MemoryAttemptId;\n    readonly jobId: Phase1JobId;\n    readonly lease: MemoryLease;\n}',
+  },
+  {
+    name: 'Phase1Claim',
+    declaration: 'export interface Phase1Claim {\n    readonly jobId: Phase1JobId;\n    readonly sourceRangeId: MemorySourceRangeId;\n    readonly sessionId: SessionId;\n    readonly fromSeq: number;\n    readonly toSeq: number;\n    readonly inputFingerprint: string;\n    readonly lease: MemoryLease;\n}',
+  },
+  {
+    name: 'Phase1ClaimRequest',
+    declaration: 'export interface Phase1ClaimRequest {\n    readonly now: number;\n    readonly leaseMs: number;\n    readonly maxAttempts: number;\n}',
+  },
+  {
+    name: 'Phase1JobId',
+    declaration: 'export type Phase1JobId = Branded<\'Phase1JobId\'>;',
+  },
+  {
+    name: 'Phase1Outcome',
+    declaration: 'export type Phase1Outcome = {\n    readonly kind: \'applied\';\n    readonly candidates: readonly MemoryCandidate[];\n} | {\n    readonly kind: \'empty\';\n} | {\n    readonly kind: \'cancelled\';\n    readonly reason: string;\n} | {\n    readonly kind: \'retry\';\n    readonly nextAttemptAt: number;\n    readonly reason: MemoryFailureCategory;\n} | {\n    readonly kind: \'quarantined\';\n    readonly quarantineId: QuarantineRangeId;\n    readonly reason: MemoryFailureCategory;\n};',
+  },
+  {
+    name: 'Phase2Claim',
+    declaration: 'export interface Phase2Claim {\n    readonly jobId: Phase2JobId;\n    readonly candidateIds: readonly MemoryCandidateId[];\n    readonly adHocNoteIds: readonly AdHocNoteId[];\n    readonly baselineGenerationId?: MemoryGenerationId;\n    readonly inputFingerprint: string;\n    readonly sourceSelectionDiff: SourceSelectionDiff;\n    readonly lease: MemoryLease;\n}',
+  },
+  {
+    name: 'Phase2ClaimRequest',
+    declaration: 'export interface Phase2ClaimRequest {\n    readonly now: number;\n    readonly leaseMs: number;\n    readonly maxSources: number;\n    readonly maxAttempts: number;\n    readonly maxUnusedDays: number;\n    readonly includeAdHocNotes?: boolean;\n}',
+  },
+  {
+    name: 'Phase2JobId',
+    declaration: 'export type Phase2JobId = Branded<\'Phase2JobId\'>;',
+  },
+  {
+    name: 'Phase2StructuredRequest',
+    declaration: 'export interface Phase2StructuredRequest {\n    readonly claim: Phase2Claim;\n    readonly request: JsonValue;\n    readonly bytes: number;\n}',
+  },
+  {
+    name: 'Phase2StructuredResult',
+    declaration: 'export interface Phase2StructuredResult {\n    readonly claim: Phase2Claim;\n    readonly attemptId: MemoryAttemptId;\n    readonly result: JsonValue;\n    readonly bytes: number;\n    readonly completed: boolean;\n}',
+  },
+  {
+    name: 'Phase2Workspace',
+    declaration: 'export interface Phase2Workspace {\n    readonly workspaceId: Phase2WorkspaceId;\n    readonly stagingRoot: string;\n    readonly inputFingerprint: string;\n    readonly readable: readonly string[];\n    readonly writable: readonly string[];\n    readonly backendOwned: readonly string[];\n}',
+  },
+  {
+    name: 'Phase2WorkspaceId',
+    declaration: 'export type Phase2WorkspaceId = Branded<\'Phase2WorkspaceId\'>;',
+  },
+  {
+    name: 'PlanApprovalObserver',
+    declaration: 'export interface PlanApprovalObserver {\n    readonly detail?: string;\n    validate(): void;\n    approved(event: SessionEvent<\'plan/review-approved\'>): void;\n}',
+  },
+  {
+    name: 'PlanApprovalRequest',
+    declaration: 'export interface PlanApprovalRequest {\n    readonly agent: Agent;\n    readonly callId: CallId;\n    readonly plan: string;\n}',
+  },
+  {
     name: 'PostToolDecision',
     declaration: 'export type PostToolDecision = {\n    kind: \'accept\';\n    content?: ContentBlock[];\n    value?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'accept\';\n    value: JsonValue;\n    content?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'block\';\n    feedback: ContentBlock[];\n    additionalContexts?: UserMessage[];\n};',
+  },
+  {
+    name: 'PreparedCodexStructuredCall',
+    declaration: 'export interface PreparedCodexStructuredCall {\n    readonly exactRequest: JsonValue;\n    dispatch(signal: AbortSignal): Promise<CodexStructuredResult>;\n    dispose(): Promise<void>;\n}',
+  },
+  {
+    name: 'PreparedGeneration',
+    declaration: 'export interface PreparedGeneration {\n    readonly generationId: MemoryGenerationId;\n    readonly publishSequence: number;\n    readonly manifestSha256: string;\n    readonly claimToken: MemoryClaimToken;\n}',
   },
   {
     name: 'PreparedLlmCall',
@@ -3611,6 +4475,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PreparedReferencedMessage',
     declaration: 'export interface PreparedReferencedMessage {\n    content: ContentBlock[];\n    additionalContext?: UserMessage;\n}',
+  },
+  {
+    name: 'PrepareGenerationRequest',
+    declaration: 'export interface PrepareGenerationRequest {\n    readonly claim: Phase2Claim;\n    readonly workspace: Phase2Workspace;\n    readonly materializing: MaterializingGeneration;\n    readonly maintenanceSessionId?: SessionId;\n    readonly structuredAttemptId?: MemoryAttemptId;\n}',
   },
   {
     name: 'PrepareSessionOptions',
@@ -3681,6 +4549,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PruneResult {\n    readonly pruned: readonly PrunedEntry[];\n    readonly charsRemoved: number;\n}',
   },
   {
+    name: 'PublishedGeneration',
+    declaration: 'export interface PublishedGeneration {\n    readonly generationId: MemoryGenerationId;\n    readonly publishSequence: number;\n    readonly changeSequence: number;\n}',
+  },
+  {
+    name: 'PublishGenerationRequest',
+    declaration: 'export interface PublishGenerationRequest {\n    readonly claim: Phase2Claim;\n    readonly prepared: PreparedGeneration;\n}',
+  },
+  {
     name: 'ReadFileLine',
     declaration: 'export interface ReadFileLine {\n    number: number;\n    text: string;\n}',
   },
@@ -3697,8 +4573,36 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ReasoningEffortId = Branded<\'ReasoningEffortId\'>;',
   },
   {
+    name: 'RecordedPhase1Request',
+    declaration: 'export interface RecordedPhase1Request {\n    readonly attemptId: MemoryAttemptId;\n    readonly outputFormatVersion?: 1 | 2;\n    readonly requestFingerprint: string;\n    readonly request: JsonValue;\n    readonly bytes: number;\n    readonly recordedAt: number;\n}',
+  },
+  {
+    name: 'RecordedPhase1Result',
+    declaration: 'export interface RecordedPhase1Result {\n    readonly attemptId: MemoryAttemptId;\n    readonly result: JsonValue;\n    readonly bytes: number;\n    readonly chunkCount: number;\n    readonly termination: \'complete\' | \'provider-error\' | \'timeout\' | \'cancelled\' | \'result-overflow\';\n    readonly recordedAt: number;\n}',
+  },
+  {
+    name: 'RecoveryProbe',
+    declaration: 'export interface RecoveryProbe {\n    check(operation: PendingTaskOperation, signal: AbortSignal): Promise<\'settled\' | \'unknown\'>;\n}',
+  },
+  {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
+  },
+  {
+    name: 'RegisterSourceRange',
+    declaration: 'export interface RegisterSourceRange {\n    readonly sourceRangeId: MemorySourceRangeId;\n    readonly sessionId: SessionId;\n    readonly fromSeq: number;\n    readonly toSeq: number;\n    readonly completedAt: number;\n    readonly sessionPurpose: \'interactive\';\n    readonly workspaceIdAtEvidence?: string;\n    readonly workspacePathAtEvidence?: string;\n    readonly policyVersion: number;\n}',
+  },
+  {
+    name: 'RegisterSourceRangeResult',
+    declaration: 'export interface RegisterSourceRangeResult {\n    readonly inserted: number;\n    readonly existing: number;\n}',
+  },
+  {
+    name: 'RememberMemoryRequest',
+    declaration: 'export interface RememberMemoryRequest {\n    readonly content: string;\n}',
+  },
+  {
+    name: 'RenewMemoryLeaseRequest',
+    declaration: 'export interface RenewMemoryLeaseRequest {\n    readonly phase: \'phase1\' | \'phase2\';\n    readonly jobId: Phase1JobId | Phase2JobId;\n    readonly ownerToken: MemoryClaimToken;\n    readonly now: number;\n    readonly leaseMs: number;\n}',
   },
   {
     name: 'ReplayEnvelope',
@@ -3719,6 +4623,34 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RequestRunOutcome',
     declaration: 'export type RequestRunOutcome = \'approved\' | \'completed\' | \'rejected\' | \'cancelled\' | \'failed\';',
+  },
+  {
+    name: 'RequirementId',
+    declaration: 'export type RequirementId = Branded<\'RequirementId\'>;',
+  },
+  {
+    name: 'RequirementInputRecord',
+    declaration: 'export interface RequirementInputRecord {\n    readonly messageId: MessageId;\n    readonly content: readonly ContentBlock[];\n    readonly inputSeq: number;\n    readonly turn: number;\n}',
+  },
+  {
+    name: 'RequirementRecord',
+    declaration: 'export interface RequirementRecord {\n    readonly id: RequirementId;\n    readonly revision: number;\n    readonly text: string;\n    readonly verification: RequirementVerification;\n    readonly source: UserSourceRef;\n    readonly state: RequirementState;\n    readonly verifiedRevision?: number;\n    readonly evidenceEventIds: readonly EventRef[];\n}',
+  },
+  {
+    name: 'RequirementState',
+    declaration: 'export type RequirementState = \'open\' | \'fulfilled\' | \'cancelled\';',
+  },
+  {
+    name: 'RequirementUpdate',
+    declaration: 'export type RequirementUpdate = {\n    readonly kind: \'add\';\n    readonly requirement: RequirementRecord;\n} | {\n    readonly kind: \'revise\';\n    readonly id: RequirementId;\n    readonly source: UserSourceRef;\n    readonly text: string;\n    readonly verification: RequirementVerification;\n} | {\n    readonly kind: \'cancel\';\n    readonly id: RequirementId;\n    readonly source: UserSourceRef;\n} | {\n    readonly kind: \'fulfill\';\n    readonly id: RequirementId;\n    readonly requirementRevision: number;\n    readonly evidenceEventIds: readonly EventRef[];\n};',
+  },
+  {
+    name: 'RequirementVerification',
+    declaration: 'export type RequirementVerification = \'answer\' | \'execution\';',
+  },
+  {
+    name: 'ResetMemoryRequest',
+    declaration: 'export interface ResetMemoryRequest {\n    readonly confirmation: \'reset-memory\';\n}',
   },
   {
     name: 'ResolvedAlwaysRetryPolicy',
@@ -3866,7 +4798,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionEventMap',
-    declaration: 'export interface SessionEventMap {\n    \'turn/start\': {\n        turn: number;\n    };\n    \'turn/end\': {\n        turn: number;\n        reason: TurnEndReason;\n    };\n    \'step/start\': {\n        turn: number;\n        step: number;\n    };\n    \'step/end\': {\n        turn: number;\n        step: number;\n    };\n    \'user/message\': UserMessage;\n    \'assistant/chunk\': {\n        turn: number;\n        step: number;\n        chunk: StreamChunk;\n    };\n    \'assistant/message\': {\n        turn: number;\n        step: number;\n        message: AssistantMessage;\n        usage?: TokenUsage;\n        interrupted?: true;\n    };\n    \'tool/call\': {\n        turn: number;\n        step: number;\n        callId: CallId;\n        name: string;\n        arguments: string;\n    };\n    \'tool/result\': {\n        turn: number;\n        step: number;\n        message: ToolResultMessage;\n        error?: {\n            name: string;\n            code: string;\n        };\n        meta?: JsonValue;\n    };\n    \'todo/write\': {\n        todos: TodoItem[];\n    };\n    \'request/header\': {\n        header: EpochHeader;\n        reason: RequestHeaderReason;\n    };\n    \'request/context\': RequestContext;\n    \'session/end-seed\': Record<string, never>;\n}',
+    declaration: 'export interface SessionEventMap {\n    \'turn/start\': {\n        turn: number;\n    };\n    \'turn/end\': {\n        turn: number;\n        reason: TurnEndReason;\n    };\n    \'step/start\': {\n        turn: number;\n        step: number;\n    };\n    \'step/end\': {\n        turn: number;\n        step: number;\n    };\n    \'user/message\': UserMessage;\n    \'assistant/chunk\': {\n        turn: number;\n        step: number;\n        chunk: StreamChunk;\n    };\n    \'assistant/message\': {\n        turn: number;\n        step: number;\n        message: AssistantMessage;\n        usage?: TokenUsage;\n        interrupted?: true;\n    };\n    \'tool/call\': {\n        turn: number;\n        step: number;\n        callId: CallId;\n        name: string;\n        arguments: string;\n    };\n    \'tool/result\': {\n        turn: number;\n        step: number;\n        message: ToolResultMessage;\n        error?: {\n            name: string;\n            code: string;\n        };\n        meta?: JsonValue;\n    };\n    \'todo/write\': {\n        todos: TodoItem[];\n    };\n    \'request/header\': {\n        header: EpochHeader;\n        reason: RequestHeaderReason;\n    };\n    \'request/context\': RequestContext;\n    \'session/retained\': {\n        reason: string;\n    };\n    \'llm/audited-call\': {\n        callId: AuditedLlmCallId;\n        purpose: string;\n        provider: string;\n        model: string;\n        durationMs: number;\n        usage?: TokenUsage;\n    };\n    \'session/end-seed\': Record<string, never>;\n}',
   },
   {
     name: 'SessionEventMetadataFilter',
@@ -3930,7 +4862,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionHeader',
-    declaration: 'export interface SessionHeader {\n    readonly version: number;\n    readonly id: SessionId;\n    readonly createdAt: number;\n    readonly cwd?: string;\n    readonly parentSession?: SessionId;\n    readonly seedLength?: number;\n    readonly origin?: \'subagent\';\n    readonly delegationDepth?: number;\n    readonly agentPreset?: string;\n}',
+    declaration: 'export interface SessionHeader {\n    readonly version: number;\n    readonly id: SessionId;\n    readonly createdAt: number;\n    readonly cwd?: string;\n    readonly parentSession?: SessionId;\n    readonly seedLength?: number;\n    readonly purpose: SessionPurpose;\n    readonly delegationDepth?: number;\n    readonly agentPreset?: string;\n}',
   },
   {
     name: 'SessionId',
@@ -3957,6 +4889,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionLogSnapshot {\n    session: SessionHeader;\n    events: SessionEvent[];\n}',
   },
   {
+    name: 'SessionMemoryControls',
+    declaration: 'export interface SessionMemoryControls {\n    readonly revision: number;\n    readonly use: \'inherit\' | \'allow\' | \'deny\';\n    readonly contribute: \'inherit\' | \'allow\' | \'deny\';\n}',
+  },
+  {
+    name: 'SessionMemoryControlsPatch',
+    declaration: 'export interface SessionMemoryControlsPatch {\n    readonly use?: SessionMemoryControls[\'use\'];\n    readonly contribute?: SessionMemoryControls[\'contribute\'];\n}',
+  },
+  {
     name: 'SessionPersistenceRevision',
     declaration: 'export type SessionPersistenceRevision = Branded<\'SessionPersistenceRevision\'>;',
   },
@@ -3975,6 +4915,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionProjectionMap',
     declaration: 'export interface SessionProjectionMap {\n}',
+  },
+  {
+    name: 'SessionPurpose',
+    declaration: 'export type SessionPurpose = \'interactive\' | \'subagent\' | \'maintenance\';',
   },
   {
     name: 'SessionRawArtifact',
@@ -4201,6 +5145,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
   },
   {
+    name: 'SourceSelectionDiff',
+    declaration: 'export interface SourceSelectionDiff {\n    readonly added: readonly MemorySourceRangeId[];\n    readonly updated: readonly MemorySourceRangeId[];\n    readonly retained: readonly MemorySourceRangeId[];\n    readonly removed: readonly MemorySourceRangeId[];\n}',
+  },
+  {
     name: 'SpawnTeammateRequest',
     declaration: 'export interface SpawnTeammateRequest {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly signal: AbortSignal;\n}',
   },
@@ -4225,6 +5173,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SpillSource {\n    toolName: string;\n    callId: CallId;\n    label: string;\n}',
   },
   {
+    name: 'StartCleanPolicyRebuildRequest',
+    declaration: 'export interface StartCleanPolicyRebuildRequest {\n    readonly sourceLookbackMs: number;\n    readonly explicitNotePolicy: \'preserve-active\' | \'purge-all\';\n    readonly confirmation: \'clean-policy-rebuild\';\n}',
+  },
+  {
     name: 'StorageBackend',
     declaration: 'export interface StorageBackend {\n    readonly kv?: KvFacet;\n    close(): Promise<void>;\n}',
   },
@@ -4239,6 +5191,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'StreamChunk',
     declaration: 'export type StreamChunk = {\n    type: \'block-start\';\n    index: number;\n    blockType: ContentBlockType;\n} | {\n    type: \'text-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'reasoning-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'tool-call-delta\';\n    index: number;\n    id: CallId;\n    name?: string;\n    argumentsDelta: string;\n} | {\n    type: \'block-end\';\n    index: number;\n    block: ContentBlock;\n} | {\n    type: \'usage\';\n    usage: TokenUsage;\n} | {\n    type: \'finish\';\n    reason: FinishReason;\n    replayState?: ReplayEnvelope;\n};',
+  },
+  {
+    name: 'StructuredConsolidationInput',
+    declaration: 'export interface StructuredConsolidationInput {\n    readonly files: readonly {\n        path: string;\n        content: string;\n    }[];\n    readonly sourceIds: readonly string[];\n    readonly noteIds: readonly string[];\n}',
   },
   {
     name: 'SubagentCapabilities',
@@ -4307,6 +5263,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SubagentStopReasonMap',
     declaration: 'export interface SubagentStopReasonMap {\n    completed: \'completed\';\n    aborted: \'aborted\';\n    error: \'error\';\n    \'max-tokens\': \'max-tokens\';\n    refusal: \'refusal\';\n}',
+  },
+  {
+    name: 'SubmitAdHocNoteRequest',
+    declaration: 'export interface SubmitAdHocNoteRequest {\n    readonly action: MemoryUpdateAction;\n    readonly content: string;\n    readonly target?: string;\n    readonly supersedes?: AdHocNoteId;\n}',
+  },
+  {
+    name: 'SubmitConversationMemoryRequest',
+    declaration: 'export interface SubmitConversationMemoryRequest extends SubmitAdHocNoteRequest {\n    readonly sessionId: SessionId;\n    readonly turn: string;\n    readonly userEventSeq: number;\n    readonly sourceUserText: string;\n}',
   },
   {
     name: 'SubprocessCollect',
@@ -4387,6 +5351,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TableValueOf',
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
+  },
+  {
+    name: 'TaskContractSnapshot',
+    declaration: 'export interface TaskContractSnapshot {\n    readonly revision: number;\n    readonly requirements: readonly RequirementRecord[];\n    readonly inputs: readonly RequirementInputRecord[];\n    readonly inputRevision: number;\n    readonly approvedPlan?: ApprovedPlanRecord;\n}',
+  },
+  {
+    name: 'TaskExecutionMode',
+    declaration: 'export type TaskExecutionMode = \'running\' | \'rewrite\' | \'verify\' | \'continue_work\' | \'replanning\' | \'outcome_unknown\';',
+  },
+  {
+    name: 'TaskExecutionSnapshot',
+    declaration: 'export interface TaskExecutionSnapshot {\n    readonly revision: number;\n    readonly incarnation: ExecutionIncarnation;\n    readonly mode: TaskExecutionMode;\n    readonly reason: string;\n    readonly repairStartedAt?: number;\n    readonly repairSteps: number;\n    readonly repairCalls: number;\n    readonly lastWorkerStep?: string;\n}',
   },
   {
     name: 'TeamId',
@@ -4534,7 +5510,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolDefinition',
-    declaration: 'export interface ToolDefinition extends ToolSchema {\n    readonly output: ToolOutputDefinition;\n    execute(args: unknown, exec: ToolRunContext): Promise<unknown>;\n    finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    timeoutMs?: number;\n    isConcurrencySafe?(args: unknown): boolean;\n    presentCall?(args: unknown): ToolCallView | undefined;\n    presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined;\n}',
+    declaration: 'export interface ToolDefinition extends ToolSchema {\n    readonly taskControl?: \'plan\' | \'ask-user\';\n    readonly effect?: \'read-only\' | \'side-effect\' | \'unknown\';\n    readonly repeatPolicy?: \'strict\' | \'polling\';\n    activePollingResult?(args: unknown, meta: JsonValue | undefined): boolean;\n    readonly output: ToolOutputDefinition;\n    execute(args: unknown, exec: ToolRunContext): Promise<unknown>;\n    finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    timeoutMs?: number;\n    isConcurrencySafe?(args: unknown): boolean;\n    presentCall?(args: unknown): ToolCallView | undefined;\n    presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined;\n}',
   },
   {
     name: 'ToolDispatchExecution',
@@ -4546,7 +5522,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolExecution',
-    declaration: 'export interface ToolExecution extends ToolExecutionInput {\n    readonly rootCallId: CallId;\n    readonly token: ToolExecutionToken;\n}',
+    declaration: 'export interface ToolExecution extends ToolExecutionInput {\n    readonly started: boolean;\n    readonly approvedOnce: boolean;\n    readonly rootCallId: CallId;\n    readonly token: ToolExecutionToken;\n}',
   },
   {
     name: 'ToolExecutionFailure',
@@ -4705,6 +5681,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TypertTypeModel {\n    readonly name: string;\n    readonly declaration: string;\n}',
   },
   {
+    name: 'UpdateMemoryItemRequest',
+    declaration: 'export interface UpdateMemoryItemRequest {\n    readonly target: MemoryItemTarget;\n    readonly content: string;\n}',
+  },
+  {
     name: 'UpdateTeamTaskRequest',
     declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
   },
@@ -4715,6 +5695,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UserQuestionProvider',
     declaration: 'export interface UserQuestionProvider {\n    ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer>;\n}',
+  },
+  {
+    name: 'UserSourceRef',
+    declaration: 'export interface UserSourceRef {\n    readonly messageId: MessageId;\n    readonly start: number;\n    readonly end: number;\n    readonly quote: string;\n    readonly event?: EventRef;\n}',
   },
   {
     name: 'WebBootEntry',

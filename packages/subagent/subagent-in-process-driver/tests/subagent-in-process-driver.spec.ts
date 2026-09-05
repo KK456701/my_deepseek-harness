@@ -216,7 +216,7 @@ describe('startInProcessRun', () => {
     // The recursion budget is durable session data, not only runtime options —
     // a depth that lived only in AgentOptions would reset to 0 on resume.
     expect(ctx.agents.get(run.id)!.session.header).toMatchObject({
-      origin: 'subagent',
+      purpose: 'subagent',
       delegationDepth: 1,
     })
     await run.dispose()

@@ -54,6 +54,11 @@ export interface JobStart {
    */
   outputLimitBytes?: number
   /**
+   * `internal` jobs participate in cancellation and quiescence but are absent
+   * from every public list, lookup, output, listener, and change feed.
+   */
+  visibility?: 'public' | 'internal'
+  /**
    * Owning live agent. Access is fenced by its session id, and agent disposal
    * cancels and awaits the job. The instance must be the one currently
    * registered under its agent id. Omitting the owner creates an unowned job,

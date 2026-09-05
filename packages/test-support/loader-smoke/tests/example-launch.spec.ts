@@ -39,7 +39,7 @@ describe('resolveExampleMode', () => {
 })
 
 describe('resolveExampleLaunch', () => {
-  it('src mode: --import tsx on the source bin with the tsconfig paths env', () => {
+  it('src mode: ESM-only tsx on the source bin with the tsconfig paths env', () => {
     const { command, args, env } = resolveExampleLaunch({
       srcBin: SRC_BIN,
       configArgs: ['./cordis.yml'],
@@ -48,6 +48,7 @@ describe('resolveExampleLaunch', () => {
     })
     expect(command).toBe(process.execPath)
     expect(args).toContain('--import')
+    expect(args).toContain(import.meta.resolve('tsx/esm'))
     expect(args).toContain(SRC_BIN)
     expect(args[args.length - 1]).toBe('./cordis.yml')
     expect(env.TSX_TSCONFIG_PATH).toBe(TSCONFIG)

@@ -175,4 +175,57 @@ describe('llm-deepseek real dynamic composition', () => {
     await assemble(ctx, { model: 'deepseek-v4-flash', messages: [] })
     expect(server.headers[0]?.authorization).toBe('Bearer entry-key')
   })
+
+  it('serves account balance from the same endpoint and credential as model requests', async () => {
+    vi.stubEnv('DEEPSEEK_API_KEY', '')
+    const server = await mockServer([
+      { kind: 'json', body: {
+        is_available: true,
+        balance_infos: [
+          { currency: 'CNY', total_balance: '110.00', granted_balance: '10.00', topped_up_balance: '100.00' },
+          { currency: 'USD', total_balance: '5.00' },
+        ],
+      } },
+    ])
+    const { ctx } = await loadComposition({ withDynamic: true, baseURL: server.url })
+
+    const balances = await ctx.llm.queryBalance(NS)
+    expect(balances).toEqual([
+      { currency: 'CNY', total: '110.00', granted: '10.00', toppedUp: '100.00' },
+      { currency: 'USD', total: '5.00' },
+    ])
+    expect(server.methods).toEqual(['GET'])
+    expect(server.paths).toEqual(['/user/balance'])
+    expect(server.requests).toEqual([null]) // GET: no JSON body
+    expect(server.headers[0]?.authorization).toBe('Bearer boot-key')
+  })
+
+  it('reports a failing balance endpoint as an error without leaking the key', async () => {
+    vi.stubEnv('DEEPSEEK_API_KEY', '')
+    const server = await mockServer([
+      { kind: 'http-error', status: 401, body: JSON.stringify({ error: { message: 'Authentication Fails, Your api key is invalid' } }) },
+    ])
+    const { ctx } = await loadComposition({ withDynamic: true, baseURL: server.url })
+
+    const error = await ctx.llm.queryBalance(NS).then(
+      () => { throw new Error('queryBalance should have rejected') },
+      (caught: unknown) => caught as { message: string; failure: { status: number } },
+    )
+    expect(error.failure.status).toBe(401)
+    // The credential rides the request (it must, to authenticate), but it
+    // never appears in the surfaced error.
+    expect(JSON.stringify(error)).not.toContain('boot-key')
+    expect(error.message).not.toContain('boot-key')
+  })
+
+  it('rejects malformed balance JSON at the provider boundary', async () => {
+    vi.stubEnv('DEEPSEEK_API_KEY', '')
+    const server = await mockServer([
+      { kind: 'json', body: { balance_infos: [{ currency: 'CNY', total_balance: 110 }] } },
+    ])
+    const { ctx } = await loadComposition({ withDynamic: true, baseURL: `${server.url}/` })
+
+    await expect(ctx.llm.queryBalance(NS)).rejects.toMatchObject({ code: 'MALFORMED_RESPONSE' })
+    expect(server.paths).toEqual(['/user/balance'])
+  })
 })

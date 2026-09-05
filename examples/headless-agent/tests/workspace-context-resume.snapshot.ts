@@ -52,6 +52,7 @@ async function seedVisibleBaseline(
     version: SESSION_FORMAT_VERSION,
     id: sessionId,
     createdAt: 1,
+    purpose: 'interactive',
     cwd,
     delegationDepth: 0,
   }

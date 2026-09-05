@@ -1,4 +1,4 @@
-# Agent Note: Every LLM request is reconstructable from the session log
+# Agent Note: Every LLM request is durably reconstructable
 
 Status: implemented
 
@@ -14,7 +14,9 @@ The reference shape for the happy path is MiniCode's `LLMClient`: a stateful con
 
 ### The principle
 
-**Model-visible ⟺ durably referenced.** Anything that reaches a model request must be reconstructable from the session log and the immutable content-addressed objects it references. The checkable consequence: anyone holding the log, its referenced attachment objects, and the pinned code version reconstructs every loop request byte-for-byte. Text-only `GenerateOptions` remain a pure function of the log; image-bearing requests additionally resolve `ImageAttachmentRef` bytes through `ctx.attachments` during adapter serialization, where digest and recorded metadata verification make the object lookup deterministic and fail loud on missing or corrupt data. Direct one-shots (compaction's summarize call) log their envelope scalars (`compaction/summary.{provider, model, maxTokens}`), and their input is deterministic code over the logged region plus those referenced objects — outside the invariant because only the loop marks request ownership.
+**Model-visible ⟺ durably referenced.** Anything that reaches a model request must have a durable reconstruction record before network dispatch. Interactive loop requests reconstruct from the session log and the immutable content-addressed objects it references. The checkable consequence: anyone holding the log, its referenced attachment objects, and the pinned code version reconstructs every loop request byte-for-byte. Text-only `GenerateOptions` remain a pure function of the log; image-bearing requests additionally resolve `ImageAttachmentRef` bytes through `ctx.attachments` during adapter serialization, where digest and recorded metadata verification make the object lookup deterministic and fail loud on missing or corrupt data.
+
+An explicitly approved capability-owned one-shot may use its own durable private audit instead of inventing an interactive Session. The capability persists the exact frozen request, resolved adapter defaults, input fingerprint, and audit format version before dispatch; persists the complete observed result or bounded overflow termination before applying derived state; and refuses incompatible audit versions during recovery. Agent-style maintenance with tools uses a private Session because its prompt, tool calls, tool results, and final response form an interaction transcript. The [capability-owned audit decision](../../proposed/architecture/2026-09-01-capability-owned-model-call-audits.md) defines the approval and recovery requirements. Compaction's summarize call remains deterministic code over a logged region and records its envelope scalars (`compaction/summary.{provider, model, maxTokens}`). Direct calls remain outside the loop invariant because only the loop marks request ownership.
 
 Prefix-cache stability is corollary #1, not the headline: an append-only log projected by a per-node pure function yields requests that are append-extensions of their predecessors whenever the header is unchanged — stability is emergent, not managed. Byte-exact audit/replay is corollary #2; resume and fork with *attributable* drift is corollary #3.
 
@@ -46,7 +48,7 @@ Like MiniCode, the conversation advances append-only and resets only when model-
 
 ## Consequences
 
-- A request that is not explained by the log cannot be constructed by accident — not by the loop, not by a listener; mutating a built request throws; every header change is a durable, diffable log event.
+- An interactive request that is not explained by the log cannot be constructed by accident — not by the loop, not by a listener; mutating a built request throws; every header change is a durable, diffable log event. An approved capability-owned one-shot cannot dispatch before its audit request is durable or apply its result before the audit result is durable.
 - Model-visible context uses logged message channels. `agent.inject()` and tool `additionalContexts` enter the inbox for a later claim, while `agent/pre-step` returns context that must settle with the current claimed batch. Each entered value is a durable sourced `user/message`, paid once and prefix-cached thereafter at the price of accumulating in history until compaction.
 - What still costs full price at the provider is inherent and logged: compaction (its `compaction/*` events and replacement entry), a real prompt, tool, or config change (`request/header` with reason `change`), or a process boundary with drift (a differing `resume` snapshot). The provider's own reasoning-content exclusion is managed server-side.
 - `agent/pre-step` is the current-request message channel; direct inbox mutation is the eventual later-request channel.

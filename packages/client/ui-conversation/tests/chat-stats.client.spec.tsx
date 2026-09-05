@@ -267,6 +267,55 @@ describe('StatsLine', () => {
       .toBe('Cache hit 90%| Input 100 tok · Output 5 tok')
   })
 
+  it('shows the live provider balance as a trailing group, even on a brand-new session', async () => {
+    const { source } = makeSource()
+    const queryBalance = vi.fn(() => Promise.resolve([
+      { currency: 'CNY', total: '110.00', granted: '10.00', toppedUp: '100.00' },
+      { currency: 'USD', total: '5.00' },
+    ]))
+    const view = render(<StatsLine {...props(source, {})} queryBalance={queryBalance} />)
+    await act(async () => { await Promise.resolve() })
+    expect(view.container.textContent).toBe('DeepSeek balance ¥110.00 · $5.00')
+  })
+
+  it('formats balance lines with common currency symbols and hides on failure', async () => {
+    const { source } = makeSource({ nodes: [assistant(1, 1)] })
+    const failing = vi.fn(() => Promise.reject(new Error('balance unavailable')))
+    const view = render(<StatsLine {...props(source, {})} queryBalance={failing} />)
+    await act(async () => { await Promise.resolve() })
+    // A failed poll hides the group; the counts row still renders.
+    expect(view.container.textContent).toBe('1 turns · 1 steps')
+    const usd = vi.fn(() => Promise.resolve([{ currency: 'USD', total: '5.00' }]))
+    const usdView = render(<StatsLine {...props(source, {})} queryBalance={usd} />)
+    await act(async () => { await Promise.resolve() })
+    expect(usdView.container.textContent).toContain('DeepSeek balance $5.00')
+  })
+
+  it('refreshes after billed usage and window focus, aborting superseded requests', async () => {
+    const { source } = makeSource()
+    const signals: AbortSignal[] = []
+    const queryBalance = vi.fn((signal: AbortSignal) => {
+      signals.push(signal)
+      return Promise.resolve([{ currency: 'CNY', total: '110.00' }])
+    })
+    const view = render(<StatsLine {...props(source, {})} queryBalance={queryBalance} />)
+    await act(async () => { await Promise.resolve() })
+    expect(queryBalance).toHaveBeenCalledTimes(1)
+
+    view.rerender(<StatsLine {...props(source, { tokenUsage: USAGE })} queryBalance={queryBalance} />)
+    await act(async () => { await Promise.resolve() })
+    expect(queryBalance).toHaveBeenCalledTimes(2)
+    expect(signals[0]?.aborted).toBe(true)
+
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await act(async () => { await Promise.resolve() })
+    expect(queryBalance).toHaveBeenCalledTimes(3)
+    expect(signals[1]?.aborted).toBe(true)
+
+    view.unmount()
+    expect(signals[2]?.aborted).toBe(true)
+  })
+
   it('computes context occupancy only when both a numerator and capacity are known', () => {
     // The projected figure wins: it is the provider sample carried forward over
     // the surface's movement, so a compaction shows without waiting a request.

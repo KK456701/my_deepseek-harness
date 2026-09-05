@@ -64,7 +64,7 @@ export function hasApiRemoteSubagentOwner(
   session: Pick<Session, 'header'>,
   agent: Agent | undefined,
 ): boolean {
-  if (session.header.origin === 'subagent') return true
+  if (session.header.purpose === 'subagent') return true
   const parentId = session.header.parentSession
   if (parentId === undefined || agent === undefined) return false
   const parent = ctx.agents.get(parentId)
@@ -84,6 +84,10 @@ export function apiRemoteSubagentOwnershipError(sessionId: SessionId): ApiRemote
   }
 }
 
+function apiRemoteMaintenanceNotFound(sessionId: SessionId): ApiRemoteLookupError {
+  return { code: 'session-not-found', message: `session "${sessionId}" not found`, details: { sessionId } }
+}
+
 /**
  * Inspect one cold served session without repairing, resuming, or publishing it.
  * @param ctx - Host Context carrying the optional persistence provider.
@@ -100,11 +104,11 @@ export async function inspectApiRemoteSession(
     throw new Error('session persistence is not configured (load a dsh-session-persistence backend)')
   }
   const meta = (await persistence.list()).find(candidate => candidate.id === sessionId)
-  if (meta === undefined || meta.cwd === undefined) {
+  if (meta === undefined || meta.cwd === undefined || meta.purpose === 'maintenance') {
     throw new ApiRemoteSessionNotFound(`session "${sessionId}" not found`)
   }
   const inspected = await persistence.inspect(sessionId)
-  if (inspected.meta.cwd === undefined) {
+  if (inspected.meta.cwd === undefined || inspected.meta.purpose === 'maintenance') {
     throw new ApiRemoteSessionNotFound(`session "${sessionId}" not found`)
   }
   return { meta: inspected.meta, events: [...inspected.events] }
@@ -127,6 +131,9 @@ export function createApiRemoteAgentResolver(
   const fencedLiveAgent = (sessionId: SessionId): ApiRemoteAgentResult | undefined => {
     const live = ctx.agents.get(sessionId)
     if (live === undefined) return undefined
+    if (live.session.header.purpose === 'maintenance') {
+      return { error: apiRemoteMaintenanceNotFound(sessionId) }
+    }
     if (hasApiRemoteSubagentOwner(ctx, live.session, live)) {
       return { error: apiRemoteSubagentOwnershipError(sessionId) }
     }
@@ -137,6 +144,9 @@ export function createApiRemoteAgentResolver(
     const fenced = fencedLiveAgent(sessionId)
     if (fenced !== undefined) return fenced
     const attached = ctx.sessions.get(sessionId)
+    if (attached?.header.purpose === 'maintenance') {
+      return { error: apiRemoteMaintenanceNotFound(sessionId) }
+    }
     if (attached !== undefined && hasApiRemoteSubagentOwner(ctx, attached, undefined)) {
       return { error: apiRemoteSubagentOwnershipError(sessionId) }
     }
@@ -155,6 +165,9 @@ export function createApiRemoteAgentResolver(
           const setup = options.setup === undefined ? undefined : await options.setup(inspected)
           const publishedSession = ctx.sessions.get(sessionId)
           const publishedAgent = ctx.agents.get(sessionId)
+          if (publishedSession?.header.purpose === 'maintenance') {
+            throw new ApiRemoteSessionNotFound(`session "${sessionId}" not found`)
+          }
           if (publishedSession !== undefined
             && hasApiRemoteSubagentOwner(ctx, publishedSession, publishedAgent)) {
             throw new ApiRemoteSubagentSessionOwnership(sessionId)
@@ -183,6 +196,9 @@ export function createApiRemoteAgentResolver(
       const fenced = fencedLiveAgent(sessionId)
       if (fenced !== undefined) return fenced
       const attached = ctx.sessions.get(sessionId)
+      if (attached?.header.purpose === 'maintenance') {
+        return { error: apiRemoteMaintenanceNotFound(sessionId) }
+      }
       if (attached !== undefined && hasApiRemoteSubagentOwner(ctx, attached, undefined)) {
         return { error: apiRemoteSubagentOwnershipError(sessionId) }
       }

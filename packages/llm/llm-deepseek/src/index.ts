@@ -14,7 +14,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { assertUsableApiKey, LlmError, resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
-import type { ModelModality, RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
+import type { LlmAccountBalance, LlmBalanceRequest, ModelModality, RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import { deepEqualJson, installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -121,6 +121,50 @@ const BASE_URL_ENV = 'DEEPSEEK_BASE_URL'
  * newer key.
  */
 export type ResolvedDeepSeekOptions = DeepSeekConnectionOptions
+
+/** Read one required balance string from the untrusted provider response. */
+function balanceString(record: Record<string, unknown>, field: string): string {
+  const value = record[field]
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new LlmError(`DeepSeek balance response has an invalid ${field}`, 'MALFORMED_RESPONSE')
+  }
+  return value
+}
+
+/** Read one optional balance string from the untrusted provider response. */
+function optionalBalanceString(record: Record<string, unknown>, field: string): string | undefined {
+  const value = record[field]
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new LlmError(`DeepSeek balance response has an invalid ${field}`, 'MALFORMED_RESPONSE')
+  }
+  return value
+}
+
+/** Validate the official `/user/balance` response before it crosses the adapter boundary. */
+function parseBalanceResponse(value: unknown): LlmAccountBalance[] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new LlmError('DeepSeek balance response is not an object', 'MALFORMED_RESPONSE')
+  }
+  const infos = (value as Record<string, unknown>).balance_infos
+  if (!Array.isArray(infos)) {
+    throw new LlmError('DeepSeek balance response has no balance_infos array', 'MALFORMED_RESPONSE')
+  }
+  return infos.map((line) => {
+    if (typeof line !== 'object' || line === null || Array.isArray(line)) {
+      throw new LlmError('DeepSeek balance response contains a non-object balance line', 'MALFORMED_RESPONSE')
+    }
+    const record = line as Record<string, unknown>
+    const granted = optionalBalanceString(record, 'granted_balance')
+    const toppedUp = optionalBalanceString(record, 'topped_up_balance')
+    return {
+      currency: balanceString(record, 'currency'),
+      total: balanceString(record, 'total_balance'),
+      ...granted === undefined ? {} : { granted },
+      ...toppedUp === undefined ? {} : { toppedUp },
+    }
+  })
+}
 
 /** Resolve, validate, and detach the advisory model catalog. */
 function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): DeepSeekCatalogModel[] {
@@ -282,6 +326,52 @@ export function apply(ctx: Context, config: Config): void {
   ctx.llm.registerConfigurableProviders([
     { provider: PROVIDER, displayName: 'DeepSeek', settingsNs: NS, settingsPath: [] },
   ])
+  // Account-balance query: resolves the same endpoint and credential as model
+  // requests, so the shown balance always matches the route that bills it.
+  // `/user/balance` is a DeepSeek-official endpoint; a deployment pointing the
+  // base URL at a gateway that does not expose it fails this query, which the
+  // surface reports as "balance unavailable" rather than fabricating a figure.
+  ctx.llm.registerBalanceQuery(NS, async (request: LlmBalanceRequest): Promise<LlmAccountBalance[]> => {
+    const connection = options()
+    const apiKey = await resolveApiKey(connection)
+    const endpoint = `${connection.baseURL.replace(/\/+$/, '')}/user/balance`
+    let response: Response
+    try {
+      response = await fetch(endpoint, {
+        headers: {
+          'authorization': `Bearer ${apiKey}`,
+          'accept': 'application/json',
+        },
+        ...request.signal === undefined ? {} : { signal: request.signal },
+      })
+    } catch (error: unknown) {
+      throw new LlmError(
+        request.signal?.aborted === true
+          ? 'DeepSeek balance request aborted'
+          : `DeepSeek balance request to ${endpoint} failed`,
+        request.signal?.aborted === true ? 'ABORTED' : 'TRANSPORT',
+        { cause: error },
+      )
+    }
+    if (!response.ok) {
+      let message = `DeepSeek balance error (HTTP ${response.status})`
+      try {
+        const parsed = await response.json() as { error?: { message?: string } }
+        if (parsed.error?.message) message = parsed.error.message
+      } catch {
+        // Only swallow error-body parsing: the HTTP status still identifies the
+        // failure, so malformed gateway JSON must not mask it.
+      }
+      throw new LlmError(message, 'BALANCE_UNAVAILABLE', { status: response.status })
+    }
+    let body: unknown
+    try {
+      body = await response.json()
+    } catch (error: unknown) {
+      throw new LlmError('DeepSeek balance response is not valid JSON', 'MALFORMED_RESPONSE', { cause: error })
+    }
+    return parseBalanceResponse(body)
+  })
   // Route effects bind to this apply fiber via the stable `ctx` reference,
   // even when a swap runs inside the scoped settings callback below.
   const registration = ctx.llm.registerAdapter([PROVIDER], adapter)

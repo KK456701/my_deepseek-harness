@@ -76,6 +76,19 @@ flowchart LR
   svc_sessionTitle["ctx.sessionTitle<br/>Log-backed session titles"]
   pkg_session_title_first_prompt_llm["session-title-first-prompt-llm"]
   pkg_session_title_all_prompts_llm["session-title-all-prompts-llm"]
+  pkg_memory["memory"]
+  svc_memory["ctx.memory<br/>Profile long-term memory"]
+  pkg_memory_local["memory-local"]
+  pkg_memory_prompt["memory-prompt"]
+  pkg_memory_remote["memory-remote"]
+  pkg_memoryPipelineStore["memoryPipelineStore"]
+  pkg_memoryMaintenance["memoryMaintenance"]
+  pkg_memory_pipeline_store["memory-pipeline-store"]
+  svc_memoryPipelineStore["ctx.memoryPipelineStore<br/>Private memory pipeline store"]
+  pkg_memory_scheduler["memory-scheduler"]
+  pkg_memory_maintenance["memory-maintenance"]
+  svc_memoryMaintenance["ctx.memoryMaintenance<br/>Memory scheduler lifecycle"]
+  pkg_memory_maintenance_triggers["memory-maintenance-triggers"]
   pkg_system_prompt["system-prompt"]
   svc_systemPrompt["ctx.systemPrompt<br/>System prompt assembly registry"]
   pkg_tools["tools"]
@@ -162,6 +175,15 @@ flowchart LR
   pkg_subagent_dsh_sdk["subagent-dsh-sdk"]
   pkg_tool_subagent_control["tool-subagent-control"]
   pkg_tool_ralph["tool-ralph"]
+  pkg_codex_structured_runner["codex-structured-runner"]
+  svc_codexStructuredRunner["ctx.codexStructuredRunner<br/>Auditable Codex structured calls"]
+  pkg_experimental_task_contract["experimental-task-contract"]
+  svc_taskContract["ctx.taskContract<br/>Versioned current requirements and claimed input"]
+  pkg_experimental_final_completeness_gate["experimental-final-completeness-gate"]
+  pkg_experimental_progress_integrity_observer["experimental-progress-integrity-observer"]
+  pkg_experimental_task_execution_control["experimental-task-execution-control"]
+  svc_progressIntegrityObserver["ctx.progressIntegrityObserver<br/>Event-triggered progress observation"]
+  svc_taskExecutionControl["ctx.taskExecutionControl<br/>Shared task execution control"]
   pkg_agent_team["agent-team"]
   svc_agentTeams["ctx.agentTeams<br/>Agent Teams coordination domain"]
   pkg_tool_agent_team["tool-agent-team"]
@@ -216,6 +238,7 @@ flowchart LR
   pkg_bash_sandbox --> svc_shell
   pkg_code_runtime --> svc_codeRuntime
   pkg_code_runtime_worker --> svc_codeRuntime
+  pkg_codex_structured_runner --> svc_codexStructuredRunner
   pkg_commands --> svc_commands
   pkg_compaction --> svc_compaction
   pkg_compaction_basic --> svc_compaction
@@ -228,6 +251,9 @@ flowchart LR
   pkg_directory_picker_browse --> svc_directoryPicker
   pkg_directory_picker_native --> svc_directoryPicker
   pkg_e2b --> svc_e2b
+  pkg_experimental_progress_integrity_observer --> svc_progressIntegrityObserver
+  pkg_experimental_task_contract --> svc_taskContract
+  pkg_experimental_task_execution_control --> svc_taskExecutionControl
   pkg_file_reference --> svc_fileReferences
   pkg_file_reference_local --> svc_fileReferences
   pkg_fs --> svc_fs
@@ -244,6 +270,12 @@ flowchart LR
   pkg_llm_replay --> svc_llm
   pkg_lsp --> svc_lsp
   pkg_lsp_local --> svc_lsp
+  pkg_memory --> svc_memory
+  pkg_memory_local --> svc_memory
+  pkg_memory_local --> svc_memoryPipelineStore
+  pkg_memory_maintenance --> svc_memoryMaintenance
+  pkg_memory_pipeline_store --> svc_memoryPipelineStore
+  pkg_memory_scheduler --> svc_memoryMaintenance
   pkg_message_feedback --> svc_messageFeedback
   pkg_modules --> svc_clientModules
   pkg_permission_presets --> svc_permissionPresets
@@ -282,6 +314,7 @@ flowchart LR
   pkg_subagent --> svc_subagents
   pkg_subagent_acp --> svc_subagents
   pkg_subagent_claude_code --> svc_subagents
+  pkg_subagent_codex --> svc_codexStructuredRunner
   pkg_subagent_codex --> svc_subagents
   pkg_subagent_dsh_sdk --> svc_subagents
   pkg_subagent_fork_in_process --> svc_subagents
@@ -319,6 +352,7 @@ flowchart LR
   svc_attachments --> pkg_llm_pi_ai
   svc_clientModules --> pkg_hmr
   svc_codeRuntime --> pkg_tools
+  svc_codexStructuredRunner --> pkg_memory_scheduler
   svc_compaction --> pkg_compaction_basic
   svc_cordisInspect --> pkg_tool_cordis
   svc_credentials --> pkg_apiproxy
@@ -340,6 +374,11 @@ flowchart LR
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
+  svc_memory --> pkg_memory_prompt
+  svc_memory --> pkg_memory_remote
+  svc_memoryMaintenance --> pkg_memory_maintenance_triggers
+  svc_memoryPipelineStore --> pkg_memory_scheduler
+  svc_progressIntegrityObserver --> pkg_experimental_task_execution_control
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -395,6 +434,11 @@ flowchart LR
   svc_systemPrompt --> pkg_tool_terminal
   svc_systemPrompt --> pkg_tool_web
   svc_systemPrompt --> pkg_tools
+  svc_taskContract --> pkg_experimental_final_completeness_gate
+  svc_taskContract --> pkg_experimental_progress_integrity_observer
+  svc_taskContract --> pkg_experimental_task_execution_control
+  svc_taskExecutionControl --> pkg_experimental_final_completeness_gate
+  svc_taskExecutionControl --> pkg_experimental_progress_integrity_observer
   svc_terminals --> pkg_tool_terminal
   svc_tokenMeter --> pkg_compaction_basic
   svc_toolResultPruner --> pkg_compaction_basic
@@ -419,6 +463,10 @@ flowchart LR
   svc_workflowEngine --> pkg_tool_workflow
   svc_workspaceRegistry --> pkg_apiproxy
   svc_fs -. event gate .-> pkg_fs_observation_policy
+  svc_memory -. event gate .-> pkg_memoryMaintenance
+  svc_memory -. event gate .-> pkg_memoryPipelineStore
+  svc_memoryMaintenance -. event gate .-> pkg_memoryPipelineStore
+  svc_memoryPipelineStore -. event gate .-> pkg_memory
 ```
 
 | ctx 键 | 角色 | 所属包 | 实现 | 直接消费方 | 配套插件 | 说明 |
@@ -443,6 +491,9 @@ flowchart LR
 | `ctx.fileReferences` | `seam` | [`file-reference`](../packages/context/file-reference) | [`file-reference-local`](../packages/context/file-reference-local) | - | - | 该接口通过其一元 Remote 契约返回指定 Agent cwd 内仅含路径的补全候选；提供方负责命名空间访问和排序，但不会读取文件内容。 |
 | `ctx.sessionReferenceResolver` | `core` | [`session-reference`](../packages/context/session-reference) | - | - | - | 将当前表层中有界的对话快照投影为持久但不可信的消息上下文；Host 适配器负责提及语法。 |
 | `ctx.sessionTitle` | `seam` | [`session-title`](../packages/session/session-title) | [`session-title-first-prompt-llm`](../packages/session/session-title-first-prompt-llm), [`session-title-all-prompts-llm`](../packages/session/session-title-all-prompts-llm) | - | - | 负责确定性回退、最新标题折叠区，以及唯一的可选异步提供方注册。 |
+| `ctx.memory` | `seam` | [`memory`](../packages/memory/memory) | [`memory-local`](../packages/memory/memory-local) | [`memory-prompt`](../packages/memory/memory-prompt), [`memory-remote`](../packages/memory/memory-remote) | `memoryPipelineStore`, `memoryMaintenance` | 提供 profile 控制、不可变 generation 读取、词法检索、显式记忆请求、隔离失败管理和 reset，不暴露流水线状态。 |
+| `ctx.memoryPipelineStore` | `seam` | [`memory-pipeline-store`](../packages/memory/memory-pipeline-store) | [`memory-local`](../packages/memory/memory-local) | [`memory-scheduler`](../packages/memory/memory-scheduler) | [`memory`](../packages/memory/memory) | 通过不透明句柄管理持久 claim、lease、审计调用、暂存工作区、generation 校验、fencing 发布、恢复与清理。 |
+| `ctx.memoryMaintenance` | `seam` | [`memory-maintenance`](../packages/memory/memory-maintenance) | [`memory-scheduler`](../packages/memory/memory-scheduler) | [`memory-maintenance-triggers`](../packages/memory/memory-maintenance-triggers) | `memoryPipelineStore` | 通过私有存储协调发现和模型任务；触发器只唤醒或排空调度器，不访问记忆存储。 |
 | `ctx.systemPrompt` | `core` | [`system-prompt`](../packages/core/system-prompt) | - | [`agent-loop`](../packages/core/agent-loop), [`tools`](../packages/core/tools), [`tool-fs`](../packages/fs/tool-fs), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-web`](../packages/web/tool-web) | - | 为每个步骤收集提示词各部分和面向模型的工具 schema。 |
 | `ctx.tools` | `core` | [`tools`](../packages/core/tools) | - | [`agent-loop`](../packages/core/agent-loop), [`tool-ask-user`](../packages/interaction/tool-ask-user), [`tool-bash`](../packages/shell/tool-bash), [`tool-cordis`](../packages/extensions/tool-cordis), [`tool-fs`](../packages/fs/tool-fs), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-skill`](../packages/skill/tool-skill), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-todo`](../packages/todo/tool-todo), [`tool-web`](../packages/web/tool-web) | - | 注册能力，负责 Code Mode 传输，并让调用依次经过策略前处理、单调守卫、环绕分派、策略后处理和最终结果观测。 |
 | `ctx.userQuestions` | `seam` | [`user-questions`](../packages/interaction/user-questions) | - | [`tool-ask-user`](../packages/interaction/tool-ask-user) | - | UI 前端提供当前生效的人工回答提供方；tool-ask-user 在提供方无关的 ask() promise 上暂停工具调用。 |
@@ -469,6 +520,10 @@ flowchart LR
 | `ctx.fs` | `seam` | [`fs`](../packages/fs/fs) | [`fs-local`](../packages/fs/fs-local), [`fs-sandbox`](../packages/fs/fs-sandbox), [`fs-e2b`](../packages/e2b/fs-e2b) | [`tool-fs`](../packages/fs/tool-fs) | [`fs-observation-policy`](../packages/fs/fs-observation-policy) | tool-fs 通过 ctx.fs 执行读取／写入／编辑；fs-sandbox 按共享沙箱模式限制变更；fs-observation-policy 通过 fs/* 事件门禁贡献基于观测状态的检查。 |
 | `ctx.compaction` | `seam` | [`compaction`](../packages/compaction/compaction) | [`compaction-basic`](../packages/compaction/compaction-basic) | [`compaction-basic`](../packages/compaction/compaction-basic) | - | 基础后端消费步骤后的压力事件和请求错误恢复事件；不存在面向模型的压缩工具。 |
 | `ctx.subagents` | `seam` | [`subagent`](../packages/subagent/subagent) | [`subagent-spawn-in-process`](../packages/subagent/subagent-spawn-in-process), [`subagent-fork-in-process`](../packages/subagent/subagent-fork-in-process), [`subagent-acp`](../packages/subagent/subagent-acp), [`subagent-codex`](../packages/subagent/subagent-codex), [`subagent-claude-code`](../packages/subagent/subagent-claude-code), [`subagent-dsh-sdk`](../packages/subagent/subagent-dsh-sdk) | [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-subagent-control`](../packages/subagent/tool-subagent-control), [`tool-ralph`](../packages/workflow/tool-ralph) | - | 提供方实现传输；该服务还负责可选的、基于 Activation 的延续编排，tool-subagent 选择一次性或可延续委派，tool-subagent-control 传递后续消息，而 tool-ralph 要求一条全新的结构化输出路由。 |
+| `ctx.codexStructuredRunner` | `seam` | [`codex-structured-runner`](../packages/subagent/codex-structured-runner) | [`subagent-codex`](../packages/subagent/subagent-codex) | [`memory-scheduler`](../packages/memory/memory-scheduler) | - | 提供方准备不可变的 app-server 请求；记忆调度器在派发前持久化请求，并在应用前验证 JSON 结果。 |
+| `ctx.taskContract` | `core` | [`experimental-task-contract`](../packages/experimental/task-contract) | - | [`experimental-final-completeness-gate`](../packages/experimental/final-completeness-gate), [`experimental-progress-integrity-observer`](../packages/experimental/progress-integrity-observer), [`experimental-task-execution-control`](../packages/experimental/task-execution-control) | - | 独立于压缩重放已领取用户输入、版本化需求和已批准计划；CAS 追加前验证完整更新批次。 |
+| `ctx.progressIntegrityObserver` | `core` | [`experimental-progress-integrity-observer`](../packages/experimental/progress-integrity-observer) | - | [`experimental-task-execution-control`](../packages/experimental/task-execution-control) | - | 只在完全相同的调用结果、连续失败或结果不变的 A/B 交替出现后判断进展；普通 Step 数量不会触发它。 |
+| `ctx.taskExecutionControl` | `core` | [`experimental-task-execution-control`](../packages/experimental/task-execution-control) | - | [`experimental-final-completeness-gate`](../packages/experimental/final-completeness-gate), [`experimental-progress-integrity-observer`](../packages/experimental/progress-integrity-observer) | - | 在现有工具执行点协调补救预算、暂停、精确计划批准及持久派发回执。Shadow 不改变执行。 |
 | `ctx.agentTeams` | `core` | `agent-team` | - | `tool-agent-team` | - | 负责隐式 Root roster、持久 peer mailbox、共享任务 DAG 与 continuable child 生命周期；tool-agent-team 提供作用域化模型策略和控制工具。 |
 | `ctx.jobs` | `seam` | [`jobs`](../packages/jobs/jobs) | [`jobs-local`](../packages/jobs/jobs-local) | [`tool-bash`](../packages/shell/tool-bash), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-jobs`](../packages/jobs/tool-jobs) | - | 生产方（后台 bash、PTY 发送和 subagent 委派）登记正在运行的工作；tool-jobs 是面向模型的控制器，用于读取、列出和终止这些工作；jobs-local 是进程本地注册表。 |
 | `ctx.web` | `seam` | [`web`](../packages/web/web) | [`web-search-exa`](../packages/web/web-search-exa), [`web-search-perplexity`](../packages/web/web-search-perplexity), [`web-search-deepseek`](../packages/web/web-search-deepseek), [`web-fetch-http`](../packages/web/web-fetch-http) | [`tool-web`](../packages/web/tool-web) | - | 搜索和抓取提供方注册到同一个 ctx.web seam；tool-web 负责稳定的面向模型名称。 |

@@ -168,6 +168,14 @@ describe('sessionStats wall-time fold (controlled timestamps)', () => {
     source: { kind: 'model', provider: 'mock', model: 'mock' },
   })
 
+  it('includes audited capability-owned model wall time without adding a Worker step', () => {
+    expect(fold([
+      at(1_000, 'llm/audited-call', {
+        callId: 'review-1', purpose: 'final-shadow-review', provider: 'mock', model: 'reviewer', durationMs: 750,
+      }),
+    ])).toEqual(totals({ llmMs: 750 }))
+  })
+
   it('accrues model, first-token, and decode time from one fully recorded step', () => {
     expect(fold([
       at(1_000, 'step/start', { turn: 1, step: 1 }),

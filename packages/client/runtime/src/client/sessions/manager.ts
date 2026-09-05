@@ -545,6 +545,7 @@ export class SessionManager {
       if (result.ok) {
         this.recordMutation({ kind: 'upsert', summary: {
           sessionId: result.value.sessionId, updatedAt: Date.now(), running: false, blank: true,
+          purpose: 'interactive',
           ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
           ...(result.value.agentPreset !== undefined ? { agentPreset: result.value.agentPreset } : {}),
         } })
@@ -559,6 +560,7 @@ export class SessionManager {
             updatedAt: Date.now(),
             running: false,
             blank: true,
+            purpose: 'interactive',
           } })
         }
       }
@@ -592,6 +594,7 @@ export class SessionManager {
       if (childId !== undefined) {
         this.recordMutation({ kind: 'upsert', summary: {
           sessionId: childId, updatedAt: Date.now(), running: false, blank: false,
+          purpose: 'interactive',
           parentSessionId: opts.sessionId,
           ...(source?.cwd !== undefined ? { cwd: source.cwd } : {}),
         } })
@@ -618,8 +621,9 @@ export class SessionManager {
    * @param agentPreset - the preset id the host confirmed.
    */
   noteAgentPreset(sessionId: SessionId, agentPreset: string): void {
+    const purpose = this.summaries.find(summary => summary.sessionId === sessionId)?.purpose ?? 'interactive'
     this.recordMutation({ kind: 'upsert', summary: {
-      sessionId, updatedAt: Date.now(), running: false, blank: true, agentPreset,
+      sessionId, updatedAt: Date.now(), running: false, blank: true, purpose, agentPreset,
     } })
   }
 
@@ -699,6 +703,10 @@ export class SessionManager {
       // synchronous markDirty keeps the list snapshot same-tick fresh (the
       // store's own any-key channel is microtask-batched).
       this.projectionStore(frame.sessionId).apply(frame.key, frame.value, frame.seq)
+      if (frame.key === 'sessionListMetadata' && this.projectionStore(frame.sessionId).values().sessionListMetadata?.blank === false) {
+        this.recordMutation({ kind: 'engaged', sessionId: frame.sessionId })
+        this.sessions.get(frame.sessionId)?.handleBlank(false)
+      }
       this.notifier.markDirty()
       return
     }
@@ -799,12 +807,12 @@ export class SessionManager {
         this.mergeSummary({
           sessionId: frame.sessionId, updatedAt: Date.now(), running: false, blank: frame.blank,
           ...(frame.parentSessionId !== undefined ? { parentSessionId: frame.parentSessionId } : {}),
-          ...(frame.origin !== undefined ? { origin: frame.origin } : {}),
+          purpose: frame.purpose,
           ...(frame.cwd !== undefined ? { cwd: frame.cwd } : {}),
           ...(frame.agentPreset !== undefined ? { agentPreset: frame.agentPreset } : {}),
         })
         this.sessions.get(frame.sessionId)?.handleBlank(frame.blank)
-        if (frame.origin === 'subagent' && frame.parentSessionId !== undefined) {
+        if (frame.purpose === 'subagent' && frame.parentSessionId !== undefined) {
           this.markCatalogParentExpandable(frame.parentSessionId)
         }
         if (frame.parentSessionId !== undefined
@@ -815,7 +823,7 @@ export class SessionManager {
       }
       case 'host/session-removed': {
         const summary = this.summaries.find(candidate => candidate.sessionId === frame.sessionId)
-        const durableSubagent = summary?.origin === 'subagent' || this.addresses.has(frame.sessionId)
+        const durableSubagent = summary?.purpose === 'subagent' || this.addresses.has(frame.sessionId)
         this.recordMutation(durableSubagent
           ? { kind: 'status', sessionId: frame.sessionId, running: false }
           : { kind: 'remove', sessionId: frame.sessionId })
@@ -1045,7 +1053,7 @@ export class SessionManager {
         prev !== undefined && prev.updatedAt === entry.updatedAt && prev.running === entry.running
         && prev.blank === entry.blank && prev.agentPreset === entry.agentPreset
         && prev.parentSessionId === entry.parentSessionId && prev.cwd === entry.cwd
-        && prev.origin === entry.origin && prev.title === entry.title && prev.depth === entry.depth
+        && prev.purpose === entry.purpose && prev.title === entry.title && prev.depth === entry.depth
         && prev.pendingInteraction === entry.pendingInteraction
         && prev.projectionValues === entry.projectionValues
         && prev.completed === entry.completed
@@ -1084,14 +1092,13 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
       if (existing === undefined) return [mutation.summary, ...summaries]
       const filled: SessionSummary = {
         ...existing,
+        purpose: mutation.summary.purpose,
         // Blank only lowers: a stale true (session-added racing the local
         // first send) never re-hides an already-surfaced session.
         blank: existing.blank && mutation.summary.blank,
         ...(existing.cwd === undefined && mutation.summary.cwd !== undefined ? { cwd: mutation.summary.cwd } : {}),
         ...(existing.parentSessionId === undefined && mutation.summary.parentSessionId !== undefined
           ? { parentSessionId: mutation.summary.parentSessionId } : {}),
-        ...(existing.origin === undefined && mutation.summary.origin !== undefined
-          ? { origin: mutation.summary.origin } : {}),
         // Newest wins, not fill-only: a blank-session preset switch replaces
         // the creation-time value, and every producer of this field (the
         // create echo, the select echo, a list row) reports the CURRENT one.
@@ -1099,7 +1106,7 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
           ? { agentPreset: mutation.summary.agentPreset } : {}),
       }
       if (filled.cwd === existing.cwd && filled.parentSessionId === existing.parentSessionId
-        && filled.origin === existing.origin && filled.blank === existing.blank
+        && filled.purpose === existing.purpose && filled.blank === existing.blank
         && filled.agentPreset === existing.agentPreset) return [...summaries]
       return summaries.map(summary => summary.sessionId === mutation.summary.sessionId ? filled : summary)
     }

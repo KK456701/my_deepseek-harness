@@ -18,6 +18,7 @@ function header(agentPreset?: string): SessionHeader {
     version: 0,
     id: SessionId('s'),
     createdAt: 1,
+    purpose: 'interactive',
     delegationDepth: 0,
     ...agentPreset === undefined ? {} : { agentPreset },
   }

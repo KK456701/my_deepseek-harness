@@ -31,6 +31,7 @@ function agent(ctx: Context, cwd: string | undefined): Agent {
   const scope = ctx.plugin(() => {})
   const session = Session.create(id, [], {
     version: 0,
+    purpose: 'interactive',
     id,
     createdAt: 0,
     ...cwd === undefined ? {} : { cwd },

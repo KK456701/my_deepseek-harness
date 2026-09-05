@@ -3,7 +3,7 @@
 
 # Tool Execution Pipeline
 
-This graph shows where policy, hooks, sandboxing, filesystem guards, result rewriting, final-outcome observation, and UI rendering run without changing the loop. The `tools/pre-execute` waterfall runs first, monotonic guards run next, and the `tools/execute` and `tools/post-execute` waterfalls follow; the three waterfalls may transform a call. Definition-owned `finalizeContent` and `tools/result` run afterward.
+The `tools/pre-execute` waterfall and monotonic guards determine admission. `tools/execute` wraps dispatch; `tools/dispatch-ready` runs after its asynchronous waits, followed by synchronous cancellation and guard checks immediately before the body. `tools/post-execute`, definition-owned `finalizeContent`, and `tools/result` handle the outcome.
 
 ```mermaid
 flowchart TD
@@ -15,6 +15,7 @@ flowchart TD
   denied["denied or approval refused<br/>tool body skipped"]
   approval["<code>ctx.approval</code> one-shot prompt<br/>absent or unanswerable: deny"]
   around["<code>tools/execute</code> waterfall<br/>timeout, retry, metrics (around dispatch)"]
+  ready["<code>tools/dispatch-ready</code><br/>async barrier; then sync cancellation and guard recheck"]
   toolBody["Registered tool execute() body"]
   fsGate["<code>fs/write-intent</code> or <code>fs/edit-intent</code><br/>tool-fs mutations only"]
   owned["Tool-owned session events<br/><code>todo/write</code>, <code>fs/observed</code>, <code>hook/invoked</code>, <code>hook/result</code>, <code>tool/code-dispatch</code>"]
@@ -33,7 +34,10 @@ flowchart TD
   guards -->|allow| around
   guards -->|deny| denied
   guards -.->|throw| normalized
-  around --> toolBody
+  around --> ready
+  ready -->|allowed| toolBody
+  ready -->|denied| denied
+  ready -.->|throw| normalized
   pre -->|deny| denied
   pre -->|ask| approval
   approval -->|allowed-once| guards

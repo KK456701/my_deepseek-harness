@@ -6,6 +6,8 @@
 
 ## 持久状态
 
+`observeApprovals()` 允许任务所有者在人类审批前捕获版本并添加运行时拥有的具体操作详情。`plan/review-start` 保存实际展示的完整计划，`plan/review-approved` 引用该记录。全部观察者验证通过后才执行批准回调。卸载或捕获版本变化会拒绝审批；`/plan off` 不会解除其他能力拥有的执行暂停。
+
 `plan/mode`（`{ active: boolean }`）是一个仅存在于日志中、每次以完整值替换的 `SessionEventMap` 成员。`foldPlanMode(events)` 返回最后记录的值，如果没有则返回 `false`，因此恢复、fork 和压缩（compaction）都能直接从会话日志恢复 plan 状态。UI 通过 `session/event` 观察已提交的切换。
 
 `ctx.planMode.set(agent, active)` 会在 agent 空闲时立即追加独立的 `plan/mode` 事件，因为下一个提示词之前不会运行轮内 pre-step。agent 运行时，该方法会保留待生效选择，直到下一个被接受的轮内 pre-step。返回值区分 `committed`、`queued`、表示反转的 `cancelled` 和 `noop`。`get(agent)` 返回 `{ active, pending? }`，将用于组装当前步骤的日志状态与用户的轮中选择分开。初始与续步 pre-step 都会应用待生效选择；同一步骤的请求恢复重试会复用已冻结的 assembly，并将该选择保留到下一个被接受的轮内 pre-step。当最后记录的请求头描述了另一状态时，用户选择的变更会贡献一条插件来源的 `user/message` 通知（两条提交路径皆然）。

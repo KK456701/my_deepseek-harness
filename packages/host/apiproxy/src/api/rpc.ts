@@ -80,6 +80,13 @@ export interface RpcErrorDetailsMap {
    * details name the endpoint asked, never the credential offered.
    */
   'model-discovery-failed': { settingsNs: string; baseURL?: string }
+  /**
+   * A provider account-balance query failed: the namespace has no registered
+   * balance query, or the endpoint refused/unanswered. The message is the
+   * adapter's own text; the details name the namespace asked, never the
+   * credential offered.
+   */
+  'balance-unavailable': { settingsNs: string }
   'title-invalid': { sessionId: SessionId }
   'fork-unavailable': { sessionId: SessionId }
   'subagent-parent-unavailable': { parentSessionId: SessionId }

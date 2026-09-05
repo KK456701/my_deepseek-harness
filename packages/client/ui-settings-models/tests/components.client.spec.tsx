@@ -6,7 +6,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type { RpcResponse, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import {
-  ModelsSection, needsSetup, providerCopy, providerTargetLabel, removeProviderProfile,
+  groupConfiguredProviders, ModelsSection, needsSetup, providerCopy, providerTargetLabel, removeProviderProfile,
 } from '../src/client/ModelsSection.tsx'
 import type { ModelsSectionInjected, ModelsSectionProps } from '../src/client/ModelsSection.tsx'
 import { pathOps } from '../src/client/ProviderEditor.tsx'
@@ -328,6 +328,19 @@ describe('ModelsSection', () => {
   it('derives conventional credential references from route ids', () => {
     expect(deriveKeyRef('anthropic')).toBe('ANTHROPIC_API_KEY')
     expect(deriveKeyRef('minimax-cn')).toBe('MINIMAX_CN_API_KEY')
+  })
+
+  it('keeps the installed Ollama route separate from cloud API providers', () => {
+    const row = (provider: string): ProviderRow => ({
+      entry: { provider, displayName: provider, settingsNs: 'llm-pi-ai', settingsPath: ['providers', provider], active: true },
+      configured: true,
+      removable: false,
+      apiKeyEnv: undefined,
+      credential: undefined,
+    })
+    const groups = groupConfiguredProviders([row('deepseek-official'), row('ollama-local'), row('openai')])
+    expect(groups.cloud.map(candidate => candidate.entry.provider)).toEqual(['deepseek-official', 'openai'])
+    expect(groups.ollama.map(candidate => candidate.entry.provider)).toEqual(['ollama-local'])
   })
 
   it('uses one stable provider identity in action copy', () => {

@@ -17,7 +17,7 @@ import { contentHasImage, createUserMessage, freezeMessage, ReasoningEffortId } 
 import { errorChain } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, MessageSource } from '@deepseek-ai/dsh-llm'
 import { isAppendSurfaceEvent, isJsonValue } from '@deepseek-ai/dsh-session'
-import type { JsonValue, Session, SessionEvent, SessionEventMap, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
+import type { JsonValue, Session, SessionEvent, SessionEventMap, SessionHeader, SessionId, SessionPurpose, UserMessage } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionSearchCursor } from '@deepseek-ai/dsh-session-query'
 import { SubagentError } from '@deepseek-ai/dsh-subagent'
@@ -69,6 +69,7 @@ import { GoalError } from '@deepseek-ai/dsh-goal'
 import type { GoalRef as CoreGoalRef } from '@deepseek-ai/dsh-goal'
 // Type-only edges: resolve the command-change stream and `ctx.get('skills')`.
 import type {} from '@deepseek-ai/dsh-commands'
+import type {} from '@deepseek-ai/dsh-memory'
 // Type-only: the dynamic-package runner's forwarded-event declarations. Its
 // client-safe `./types` subpath deliberately, not the package root — the root
 // merges `ctx.dynamicCordisRunner`, and a dependency on that package would
@@ -446,16 +447,16 @@ function jobViews(snapshots: readonly JobSnapshot[]): JobView[] {
  * Whether the session's conversation has started: no turn has run yet (a
  * turn is one model-loop execution). Standalone plugin events — command
  * lifecycle records, plan/mode, titles, goals — never open a turn, so
- * running `/plan` or `/goal` on a fresh session keeps it blank
- * (list-hidden, reusable).
+ * running `/plan` or `/goal` on a fresh session keeps it blank. An explicit
+ * session/retained record makes a non-conversation audit visible and non-reusable.
  */
 function sessionBlank(session: Session): boolean {
-  return !session.events.some(event => event.type === 'turn/start')
+  return !session.events.some(event => event.type === 'turn/start' || event.type === 'session/retained')
 }
 
 /** Advance the Session-list hint projection by one committed event. */
 function applySessionListMetadata(state: SessionListMetadata, event: SessionEvent): SessionListMetadata {
-  const blank = state.blank && event.type !== 'turn/start'
+  const blank = state.blank && event.type !== 'turn/start' && event.type !== 'session/retained'
   const lastPromptAt = event.type === 'user/message' && event.data.source.kind === 'user'
     ? event.time
     : state.lastPromptAt
@@ -479,7 +480,7 @@ function sessionListUpdatedAt(header: SessionHeader, metadata: SessionListMetada
 /** Shared Session-header projection for list baselines and creation frames. */
 function sessionListFields(header: SessionHeader, events: readonly SessionEvent[] = []): {
   parentSessionId?: SessionId
-  origin?: 'subagent'
+  purpose: SessionPurpose
   cwd?: string
   agentPreset?: string
 } {
@@ -488,8 +489,8 @@ function sessionListFields(header: SessionHeader, events: readonly SessionEvent[
   // showing the creation-time value would contradict what the model saw.
   const agentPreset = resolveSessionPreset({ header, events })
   return {
+    purpose: header.purpose,
     ...header.parentSession === undefined ? {} : { parentSessionId: header.parentSession },
-    ...header.origin === undefined ? {} : { origin: header.origin },
     ...header.cwd === undefined ? {} : { cwd: header.cwd },
     ...agentPreset === undefined ? {} : { agentPreset },
   }
@@ -1240,7 +1241,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       init: () => ({ blank: true, lastPromptAt: null }),
       apply: applySessionListMetadata,
       view: state => state,
-      stateVersion: 1,
+      stateVersion: 2,
     })
   })
 
@@ -1457,7 +1458,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
   async function forkWorkspace(source: Pick<Session, 'id' | 'header'>): Promise<Workspace | undefined> {
     const workspaces = ctx.workspaceRegistry.list()
     const direct = workspaces.find(workspace => workspace.sessionIds.includes(source.id))
-    if (direct !== undefined || source.header.origin !== 'subagent') return direct
+    if (direct !== undefined || source.header.purpose !== 'subagent') return direct
 
     const lineage = await ctx.sessionQuery.traceSession(source.id)
     for (const ancestor of lineage.ancestors) {
@@ -1677,13 +1678,15 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         ...projections === undefined ? {} : { projections },
       }
     }
-    const items = ctx.sessions.list().map(summarizeAttached)
+    const items = ctx.sessions.list()
+      .filter(session => session.header.purpose !== 'maintenance')
+      .map(summarizeAttached)
     signal?.throwIfAborted()
     const attached = new Set(items.map(item => item.sessionId))
     const persistence = ctx.get('sessionPersistence')
     if (persistence !== undefined) {
       const cold = (await persistence.list(signal))
-        .filter(meta => !attached.has(meta.id) && meta.cwd !== undefined)
+        .filter(meta => !attached.has(meta.id) && meta.cwd !== undefined && meta.purpose !== 'maintenance')
       signal?.throwIfAborted()
       for (let offset = 0; offset < cold.length; offset += COLD_SUMMARY_BATCH_SIZE) {
         signal?.throwIfAborted()
@@ -3335,6 +3338,26 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             code: 'model-discovery-failed',
             message: error instanceof Error ? error.message : String(error),
             details: { settingsNs, ...baseURL === undefined ? {} : { baseURL } },
+          })
+        }
+      },
+
+      async balance(request, signal) {
+        const { settingsNs } = request.payload
+        try {
+          const balances = await ctx.llm.queryBalance(settingsNs, {
+            ...signal === undefined ? {} : { signal },
+          })
+          return ok(request, { balances })
+        } catch (error: unknown) {
+          // The query is display-only: a namespace with no registered balance
+          // provider, an unreachable endpoint, or a rejected key all mean the
+          // same thing to the surface — there is no figure to show. The
+          // details name only the namespace asked, never the credential.
+          return err(request, {
+            code: 'balance-unavailable',
+            message: error instanceof Error ? error.message : String(error),
+            details: { settingsNs },
           })
         }
       },

@@ -1,0 +1,31 @@
+# Standard profile-memory assembly. The feature is installed but disabled by
+# default. The scheduler stays loaded so the live profile switch can enable
+# work without restarting; the local provider owns that durable switch.
+
+- insert:
+    - id: memory-local
+      name: '@deepseek-ai/dsh-memory-local'
+      inject: [profilePath]
+      config:
+        root: !!js ctx.profilePath('memories')
+        enabled: false
+        useByDefault: true
+        contributeByDefault: true
+
+    - id: memory-scheduler
+      name: '@deepseek-ai/dsh-memory-scheduler'
+      config:
+        extractionProvider: deepseek-official
+        extractionModel: deepseek-v4-flash
+        consolidationProvider: deepseek-official
+        consolidationModel: deepseek-v4-flash
+        enabled: true
+
+    - id: memory-maintenance-triggers
+      name: '@deepseek-ai/dsh-memory-maintenance-triggers'
+
+    - id: memory-prompt
+      name: '@deepseek-ai/dsh-memory-prompt'
+
+    - id: memory-remote
+      name: '@deepseek-ai/dsh-memory-remote'

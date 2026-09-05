@@ -32,7 +32,7 @@ type FeedRow = {
   id: string
   cwd?: string
   parentId?: string
-  origin?: 'subagent'
+  purpose?: 'interactive' | 'subagent' | 'maintenance'
   running?: boolean
   blank?: boolean
   agentPreset?: string
@@ -42,9 +42,9 @@ async function feedList(b: Bench, rows: FeedRow[]): Promise<void> {
   b.api.onList = () => Promise.resolve(ok({
     items: rows.map(r => ({
       sessionId: sid(r.id), updatedAt: 1, running: r.running ?? false, blank: r.blank ?? false,
+      purpose: r.purpose ?? 'interactive',
       ...(r.cwd !== undefined ? { cwd: r.cwd } : {}),
       ...(r.parentId !== undefined ? { parentSessionId: sid(r.parentId) } : {}),
-      ...(r.origin !== undefined ? { origin: r.origin } : {}),
       ...(r.agentPreset !== undefined ? { agentPreset: r.agentPreset } : {}),
     })),
   }) as never)
@@ -61,13 +61,13 @@ describe('list store projection', () => {
     })
     await feedList(b, [
       { id: 's1', cwd: '/home/u/proj-a/' },
-      { id: 's2', parentId: 's1', origin: 'subagent', running: true },
+      { id: 's2', parentId: 's1', purpose: 'subagent', running: true },
     ])
     const state = b.svc.list.getSnapshot()
     expect(state.ids).toEqual(['s1', 's2'])
     expect(state.byId[sid('s1')]).toMatchObject({ title: 'Durable title', displayTitle: 'Durable title', cwd: '/home/u/proj-a/' })
     expect(state.byId[sid('s2')]).toMatchObject({
-      displayTitle: 's2', parentId: 's1', origin: 'subagent', running: true,
+      displayTitle: 's2', parentId: 's1', purpose: 'subagent', running: true,
     })
     expect(state.byId[sid('s2')]?.title).toBeUndefined()
   })
@@ -405,8 +405,8 @@ describe('catalog-addressed navigation', () => {
     }
     await feedList(b, [
       { id: 'root' },
-      { id: 'child', cwd: '/summary-child', parentId: 'root', origin: 'subagent' },
-      { id: 'grandchild', cwd: '/summary-grandchild', parentId: 'child', origin: 'subagent' },
+      { id: 'child', cwd: '/summary-child', parentId: 'root', purpose: 'subagent' },
+      { id: 'grandchild', cwd: '/summary-grandchild', parentId: 'child', purpose: 'subagent' },
     ])
     await b.svc.refreshSubagents(sid('root'))
     await b.svc.refreshSubagents(sid('child'))
@@ -451,8 +451,8 @@ describe('catalog-addressed navigation', () => {
 
     const list = b.svc.list.getSnapshot()
     expect(list.ids).toEqual([sid('root')])
-    expect(list.byId[sid('child')]).toMatchObject({ parentId: sid('root'), origin: 'subagent' })
-    expect(list.byId[sid('grandchild')]).toMatchObject({ parentId: sid('child'), origin: 'subagent' })
+    expect(list.byId[sid('child')]).toMatchObject({ parentId: sid('root'), purpose: 'subagent' })
+    expect(list.byId[sid('grandchild')]).toMatchObject({ parentId: sid('child'), purpose: 'subagent' })
     expect(b.svc.binding(sid('child'))).toBeUndefined()
     expect(b.svc.subagentAddress(sid('child'))).toBeUndefined()
 

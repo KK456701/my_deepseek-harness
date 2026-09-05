@@ -18,6 +18,8 @@ import type {
   TrajectorySourceBlock,
 } from './trajectory-record.ts'
 import { formatElapsedSeconds } from './trajectory-record.ts'
+import type { TrajectoryMemoryContext, TrajectoryRecordContribution } from './trajectory-contract.ts'
+import { memoryRequestCells } from './trajectory-memory-detail.ts'
 
 /** One Message or Step group inside a turn. */
 export interface TrajectoryGroupModel {
@@ -34,6 +36,9 @@ export interface TrajectoryTurnModel {
 
 /** Snapshot slice the trajectory view folds. */
 export interface TrajectoryLayoutInput {
+  records?: readonly TrajectoryRecordContribution[]
+  memoryText?: Parameters<typeof memoryRequestCells>[2]
+  memoryContexts?: readonly TrajectoryMemoryContext[]
   nodes: ConversationSnapshot['nodes']
   eventLocations?: ReadonlyMap<number, ConversationLocation>
   partial: ConversationSnapshot['partial']
@@ -77,6 +82,8 @@ type InputNode = Extract<
 >
 
 type OrderedLayoutEntry =
+  | { kind: 'record'; seq: number; record: TrajectoryRecordContribution }
+  | { kind: 'memory'; seq: number; turn: number; step: number; cell: Omit<TrajectoryCellProps, 'index'> }
   | {
     kind: 'node'
     seq: number
@@ -216,6 +223,8 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
   }
 
   const entries: OrderedLayoutEntry[] = [
+    ...(input.records ?? []).map(record => ({ kind: 'record' as const, seq: record.seq, record })),
+    ...memoryRequestCells(requests, input.memoryContexts ?? [], input.memoryText),
     ...nodes.map((node, nodeIndex) => ({
       kind: 'node' as const,
       seq: node.seq,
@@ -254,6 +263,20 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
   ].sort((left, right) => layoutEntryOrder(left) - layoutEntryOrder(right))
 
   for (const entry of entries) {
+    if (entry.kind === 'record') {
+      const { record } = entry
+      const laid = [{ absTime: record.cell.startedAt ?? null, cell: { ...record.cell, index: ++index } }]
+      const group = { title: record.group, laid }
+      if (record.turn === null) standaloneCompactions.push({ groups: [group] })
+      else if (record.step !== undefined && record.phase === 'before-step') pushStepInput(record.turn, record.step, laid)
+      else if (record.step !== undefined) pushStep(record.turn, record.step, laid)
+      else bucket(record.turn).groups.push(group)
+      continue
+    }
+    if (entry.kind === 'memory') {
+      pushStepInput(entry.turn, entry.step, [{ absTime: entry.cell.startedAt ?? null, cell: { ...entry.cell, index: ++index } }])
+      continue
+    }
     if (entry.kind === 'request') {
       const { request } = entry
       pushStep(request.turn, request.step, [{

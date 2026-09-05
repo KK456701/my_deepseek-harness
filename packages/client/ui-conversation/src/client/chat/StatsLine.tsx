@@ -2,13 +2,14 @@
 // Mounted on 'conversation.composer.dock' so it sticks with the composer in the
 // active conversation scrollport (see ConversationRoot data-conversation-scroll).
 
-import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConversationSnapshot, UseProjection } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: merges the sessionStats key into SessionProjectionMap for useProjection.
 import type {} from '@deepseek-ai/dsh-session-stats/client'
 import type { ContextPressureProjection, TokenUsageProjection } from '@deepseek-ai/dsh-token-meter/client'
+import type { AccountBalanceView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ComposerBarProps } from '../contract/slots.ts'
 import { formatTokensPerSecond } from './message-chrome.ts'
 import { assistantStepReading } from './turn-metrics.ts'
@@ -158,9 +159,30 @@ export interface StatsLineProps {
   useProjection: UseProjection
   /** The owning dock's locale seat. */
   t: ComposerBarProps['t']
+  /**
+   * Resolve the active provider's account balance lines, or `undefined` when
+   * no figure is available (no registered balance provider, missing
+   * credential, or an endpoint that refused). Injected by the registration so
+   * the row stays transport-free.
+   */
+  queryBalance?: (signal: AbortSignal) => Promise<AccountBalanceView[] | undefined>
 }
 
-export const StatsLine = memo(function StatsLine({ useSession, useProjection, t }: StatsLineProps) {
+/** Map an official DeepSeek balance currency to its symbol; preserve unknown codes. */
+function currencyPrefix(currency: string): string {
+  switch (currency) {
+    case 'CNY': return '¥'
+    case 'USD': return '$'
+    default: return `${currency} `
+  }
+}
+
+/** Join one balance line into display text: symbol + provider-formatted total. */
+function formatBalance(line: AccountBalanceView): string {
+  return `${currencyPrefix(line.currency)}${line.total}`
+}
+
+export const StatsLine = memo(function StatsLine({ useSession, useProjection, t, queryBalance }: StatsLineProps) {
   const settledNodes = useSession(s => s.chat.legacy.nodes)
   const usage = useProjection('tokenUsage')
   // Every figure rides the durable sessionStats projection, so paging and
@@ -169,6 +191,30 @@ export const StatsLine = memo(function StatsLine({ useSession, useProjection, t 
   // while no projection value is served.
   const projected = useProjection('sessionStats')
   const stats = useMemo(() => projected ?? deriveStats(settledNodes), [projected, settledNodes])
+  // Refresh after each billed model response and when the user returns to the
+  // tab. This follows actual balance-changing activity without a timer whose
+  // interval would be a deployment policy hidden in the component.
+  const balanceRevision = usage === undefined ? 0 : billedInputTokens(usage) + usage.outputTokens
+  const [balance, setBalance] = useState<AccountBalanceView[] | undefined>(undefined)
+  useEffect(() => {
+    if (queryBalance === undefined) return
+    let active: AbortController | undefined
+    const refresh = (): void => {
+      active?.abort()
+      const controller = new AbortController()
+      active = controller
+      void queryBalance(controller.signal).then(
+        (lines) => { if (!controller.signal.aborted) setBalance(lines) },
+        () => { if (!controller.signal.aborted) setBalance(undefined) },
+      )
+    }
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      active?.abort()
+    }
+  }, [balanceRevision, queryBalance])
   // Pipe-separated groups (figma stats strip); a group with no data drops out whole.
   const groups: string[] = []
   if (stats.steps > 0) {
@@ -203,13 +249,19 @@ export const StatsLine = memo(function StatsLine({ useSession, useProjection, t 
       output: formatTokens(usage.outputTokens),
     }))
   }
-  const line = groups.join(' | ')
-  // The row elides with ellipsis when overlong; a delayed hover tooltip carries
-  // the full line, enabled only while content is actually clipped.
-  const rootRef = useRef<HTMLDivElement | null>(null)
+  // The balance rides its own source, so it survives paging and compaction
+  // and shows even on a brand-new session that has not billed anything yet.
+  const balanceText = balance !== undefined && balance.length > 0
+    ? t('stats.deepseekBalance', { amount: balance.map(formatBalance).join(' · ') })
+    : undefined
+  const line = [...groups, ...(balanceText === undefined ? [] : [balanceText])].join(' | ')
+  // Session metrics yield horizontal space first, keeping the account balance
+  // visible in narrow conversation panes. The tooltip carries the complete
+  // line while those metrics are elided.
+  const metricsRef = useRef<HTMLSpanElement | null>(null)
   const [truncated, setTruncated] = useState(false)
   useLayoutEffect(() => {
-    const el = rootRef.current
+    const el = metricsRef.current
     if (el === null) return
     const measure = () => { setTruncated(el.scrollWidth > el.clientWidth) }
     measure()
@@ -218,16 +270,26 @@ export const StatsLine = memo(function StatsLine({ useSession, useProjection, t 
     observer.observe(el)
     return () => { observer.disconnect() }
   }, [line])
-  if (groups.length === 0) return null
+  if (groups.length === 0 && balanceText === undefined) return null
   return (
     <Tooltip label={line} side="top" delayMs={500} disabled={!truncated}>
-      <div ref={rootRef} className={css.root}>
-        {groups.map((group, i) => (
-          <Fragment key={group}>
-            {i > 0 && <><span className={css.sep} aria-hidden>|</span>{' '}</>}
-            <span>{group}</span>
-          </Fragment>
-        ))}
+      <div className={css.root}>
+        {groups.length > 0 && (
+          <span ref={metricsRef} className={css.metrics}>
+            {groups.map((group, i) => (
+              <Fragment key={group}>
+                {i > 0 && <><span className={css.sep} aria-hidden>|</span>{' '}</>}
+                <span>{group}</span>
+              </Fragment>
+            ))}
+          </span>
+        )}
+        {balanceText !== undefined && (
+          <>
+            {groups.length > 0 && <><span className={css.sep} aria-hidden>|</span>{' '}</>}
+            <span className={css.balance}>{balanceText}</span>
+          </>
+        )}
       </div>
     </Tooltip>
   )

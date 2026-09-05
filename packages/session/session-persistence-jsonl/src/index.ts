@@ -160,6 +160,7 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
     this.coordinator = new PersistenceCoordinator<JsonlTornMarker>(this.ctx, this, {
       preparedSessionCacheSize,
       writeBatchMaxDelayMs,
+      acceptedPurposes: ['interactive', 'subagent'],
     })
   }
 

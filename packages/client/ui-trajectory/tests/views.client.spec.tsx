@@ -19,7 +19,7 @@ import {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
-  ConversationSnapshot, RequestView,
+  ConversationSnapshot, ConversationViewSnapshotStore, RequestView,
   SessionId, SessionListState, SnapshotStore, WorkspaceListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConvViewProps, ViewTab } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -90,7 +90,7 @@ function historySnapshot(
     sessionId: SID,
     views: {
       get: target => target === 'trajectory' ? trajectory : undefined,
-    },
+    } as ConversationViewSnapshotStore,
     chat: EMPTY_CHAT_SNAPSHOT,
     nodes,
     turnTimings: new Map(),

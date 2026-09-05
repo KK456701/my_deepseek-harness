@@ -22,6 +22,8 @@ The provider advertises no optional start-time capabilities and reports `inherit
 
 ## Configuration
 
+The package also provides private `CodexStructuredRunner` calls for memory. Unlike ordinary delegation, these calls explicitly set model, reasoning effort, JSON schema, an empty temporary cwd, read-only sandbox, and unattended approvals. Optional tools are disabled; an observed tool item or oversized result aborts and rejects the attempt. Consumers own durable request/result auditing. Global Codex configuration is never edited. Structured results include exposed usage and errors but omit tool payloads, commentary, and reasoning.
+
 | Key | Default | Meaning |
 |---|---|---|
 | `providerName` | `codex` | Non-empty registry name on `ctx.subagents`; each mounted instance needs a unique value. |

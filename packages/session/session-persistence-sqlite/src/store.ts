@@ -375,7 +375,7 @@ export class SqliteStore implements PersistenceBackend<number> {
       meta.cwd ?? null,
       meta.parentSession ?? null,
       meta.seedLength ?? null,
-      meta.origin ?? null,
+      meta.purpose,
       meta.delegationDepth ?? null,
       meta.agentPreset ?? null,
       randomUUID(),

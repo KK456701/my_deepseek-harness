@@ -49,6 +49,7 @@
     "diff": "^9.0.0"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-memory": "workspace:^",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-client-locale": "workspace:^",
     "@deepseek-ai/dsh-client-runtime": "workspace:^",
@@ -59,6 +60,7 @@
     "@deepseek-ai/dsh-client-ui-conversation": "workspace:^"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-memory": "workspace:^",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-client-locale": "workspace:^",
     "@deepseek-ai/dsh-client-runtime": "workspace:^",

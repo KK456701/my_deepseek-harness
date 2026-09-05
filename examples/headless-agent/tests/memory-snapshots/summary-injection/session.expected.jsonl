@@ -1,0 +1,17 @@
+{"type":"session","version":0,"id":"{{sessionId}}","createdAt":0,"purpose":"interactive","cwd":"{{cwd}}","delegationDepth":0}
+{"type":"agent/inbox/spliced","seq":0,"time":0,"data":{"target":"next-turn","start":0,"inserted":[{"content":[{"type":"text","text":"Apply the established memory publication decision."}],"source":{"kind":"user"},"role":"user","id":"{{sessionId}}"}]}}
+{"type":"turn/start","seq":1,"time":0,"data":{"turn":1}}
+{"type":"agent/inbox/spliced","seq":2,"time":0,"data":{"target":"next-turn","start":0,"removedCount":1,"inserted":[]}}
+{"type":"step/start","seq":3,"time":0,"data":{"turn":1,"step":1}}
+{"type":"user/message","seq":4,"time":0,"data":{"content":[{"type":"text","text":"Apply the established memory publication decision."}],"source":{"kind":"user"},"role":"user","id":"{{sessionId}}"},"surfaceOp":"append"}
+{"type":"session/title","seq":5,"time":0,"data":{"title":"Apply the established memory publication","messageSeqs":[4],"source":{"kind":"fallback"}}}
+{"type":"request/header","seq":6,"time":0,"data":{"header":{"config":{"provider":"memory-snapshot","model":"memory-snapshot"},"system":"{{system}}","tools":"{{tools}}"},"reason":"initial"}}
+{"type":"request/context","seq":7,"time":0,"data":{"provider":"memory-snapshot","model":"memory-snapshot"}}
+{"type":"memory/context","seq":8,"time":0,"data":{"turn":1,"step":1,"headerSeq":6,"selection":{"kind":"available","generationId":"{{sessionId}}","summarySha256":"066b915c593518fb8d1a4a1fef1e332bcfd971221d247ce2c56d1b161d466b55","summaryStart":1686,"summaryEnd":1874,"bytes":188,"retainedItems":2,"omittedItems":0}},"ignorable":true}
+{"type":"assistant/chunk","seq":9,"time":0,"data":{"turn":1,"step":1,"chunk":{"type":"block-start","index":0,"blockType":"text"}}}
+{"type":"assistant/chunk","seq":10,"time":0,"data":{"turn":1,"step":1,"chunk":{"type":"text-delta","index":0,"text":"MEMORY_SNAPSHOT_OK"}}}
+{"type":"assistant/chunk","seq":11,"time":0,"data":{"turn":1,"step":1,"chunk":{"type":"block-end","index":0,"block":{"type":"text","text":"MEMORY_SNAPSHOT_OK"}}}}
+{"type":"assistant/chunk","seq":12,"time":0,"data":{"turn":1,"step":1,"chunk":{"type":"finish","reason":{"kind":"stop"}}}}
+{"type":"assistant/message","seq":13,"time":0,"data":{"turn":1,"step":1,"message":{"role":"assistant","content":[{"type":"text","text":"MEMORY_SNAPSHOT_OK"}],"source":{"kind":"model","provider":"memory-snapshot","model":"memory-snapshot"},"id":"{{sessionId}}"}},"sourceEventSeqs":[9,10,11,12],"surfaceOp":"append"}
+{"type":"step/end","seq":14,"time":0,"data":{"turn":1,"step":1}}
+{"type":"turn/end","seq":15,"time":0,"data":{"turn":1,"reason":{"kind":"completed"}}}

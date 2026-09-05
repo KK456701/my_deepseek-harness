@@ -25,6 +25,9 @@ export type TestSqlName =
   | 'set-user-version-16'
   | 'set-user-version-17'
   | 'update-invalid-session-metadata'
+  | 'upgrade-fixture-16'
+  | 'upgrade-fixture-17'
+  | 'upgrade-unknown-origin'
 
 /** Load one fixed test SQL resource. */
 export function testSql(name: TestSqlName): string {

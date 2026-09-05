@@ -262,6 +262,7 @@ describe('goal tool execution authority', () => {
       version: SESSION_FORMAT_VERSION,
       id: forkId,
       createdAt: Date.now(),
+      purpose: 'interactive',
       parentSession: root.session.id,
       seedLength: root.session.seq,
     })

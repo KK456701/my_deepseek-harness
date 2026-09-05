@@ -97,7 +97,7 @@ async function seedSubagent(scaffold: WebScaffold, parentId: SessionId): Promise
     createdAt,
     cwd: scaffold.workspaceCwd,
     parentSession: parentId,
-    origin: 'subagent',
+    purpose: 'subagent',
     delegationDepth: 1,
     agentPreset: 'minimal',
   })

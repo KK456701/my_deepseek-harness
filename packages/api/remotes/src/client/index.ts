@@ -7,6 +7,7 @@ import dynamicRemote from '@deepseek-ai/dsh-cordis-host-runner/remote'
 import fileReferencesRemote from '@deepseek-ai/dsh-file-reference/remote'
 import pluginInventoryRemote from '@deepseek-ai/dsh-host-plugin-inventory/remote'
 import messageFeedbackRemote from '@deepseek-ai/dsh-message-feedback/remote'
+import memoryRemote from '@deepseek-ai/dsh-memory-remote/remote'
 import sessionReferencesRemote from '@deepseek-ai/dsh-session-reference/remote'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 
@@ -17,6 +18,7 @@ export type {} from '@deepseek-ai/dsh-file-reference/remote'
 export type {} from '@deepseek-ai/dsh-goal/remote'
 export type {} from '@deepseek-ai/dsh-host-plugin-inventory/remote'
 export type {} from '@deepseek-ai/dsh-message-feedback/remote'
+export type {} from '@deepseek-ai/dsh-memory-remote/remote'
 export type {} from '@deepseek-ai/dsh-session-reference/remote'
 // The forwarded-event allowlist's selection seat: without it in the consumer's
 // compilation face `TypertRemoteEvent` is `never` and every `$on` call fails.
@@ -30,6 +32,18 @@ export type {} from '@deepseek-ai/dsh-credentials/types'
 export type {} from '@deepseek-ai/dsh-llm/types'
 export type {} from '@deepseek-ai/dsh-agent-presets/types'
 export type {} from '@deepseek-ai/dsh-settings/types'
+export type {} from '@deepseek-ai/dsh-memory'
+export type {
+  AdHocNote, AdHocNoteId, AdHocNotePage, MemoryFileReadResult, MemoryGenerationFileRole,
+  MemoryGenerationId, MemoryItem, MemoryItemId, MemoryItemListRequest, MemoryItemPage, MemoryItemTarget,
+  MemorySourceUsage,
+  RememberMemoryRequest, UpdateMemoryItemRequest, DeleteMemoryItemRequest,
+  MemoryProfileControlPatch, MemoryProfileState, MemoryQuarantineItem, MemoryQuarantinePage,
+  MemoryRebuild, MemoryRebuildId, MemoryRebuildStatus, StartCleanPolicyRebuildRequest,
+  MemoryRuntimeSettings, MemoryRuntimeSettingsPatch, MemoryRuntimeSettingsValues,
+  MemoryTreeEntry, MemoryTreePage, MemoryUpdateAction, QuarantineRangeId, SessionMemoryControls,
+  SessionMemoryControlsPatch, SubmitAdHocNoteRequest,
+} from '@deepseek-ai/dsh-memory/types'
 
 /**
  * The carrier's Client-facing types, re-exported so a business package names one
@@ -37,7 +51,7 @@ export type {} from '@deepseek-ai/dsh-settings/types'
  * the carrier's runtime values stay behind their own module edge.
  */
 export type {
-  ClientResponse, ConfigurableProviderView, ConnectionHandle, ConnectionSinks, ContentBlock,
+  AccountBalanceView, ClientResponse, ConfigurableProviderView, ConnectionHandle, ConnectionSinks, ContentBlock,
   CredentialView, DirectoryListing, DiscoveredModelView, HistoryEntry, HostFrame, IApiClient,
   MessageId, ModelCatalogFailure, ModelProviderGroup, ModelReasoningEffort, ModelSelection,
   MuxFrame, PromptContentPart, QuestionResponsePayload, QueueAction, RpcError, RpcId, RpcReceipt,
@@ -115,7 +129,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   try {
     for (const contribution of [
       commandsRemote, goalsRemote, dynamicRemote, fileReferencesRemote,
-      pluginInventoryRemote, messageFeedbackRemote, sessionReferencesRemote,
+      pluginInventoryRemote, messageFeedbackRemote, sessionReferencesRemote, memoryRemote,
     ]) {
       disposers.push(await ctx.remote.$mount(contribution))
     }

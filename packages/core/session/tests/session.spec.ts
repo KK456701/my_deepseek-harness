@@ -941,6 +941,7 @@ describe('Session', () => {
       version: SESSION_FORMAT_VERSION,
       id: SessionId('deep-restore'),
       createdAt: 1,
+      purpose: 'interactive',
     })).not.toThrow()
 
     let current: unknown = event
@@ -979,6 +980,7 @@ describe('Session', () => {
       version: SESSION_FORMAT_VERSION,
       id: SessionId('header-owned'),
       createdAt: 123,
+      purpose: 'interactive' as const,
       cwd: '/accepted',
       parentSession: SessionId('parent'),
       seedLength: 2,
@@ -991,6 +993,7 @@ describe('Session', () => {
       version: SESSION_FORMAT_VERSION,
       id: 'header-owned',
       createdAt: 123,
+      purpose: 'interactive',
       cwd: '/accepted',
       parentSession: 'parent',
       seedLength: 2,
@@ -1007,6 +1010,7 @@ describe('Session', () => {
       readonly version = SESSION_FORMAT_VERSION
       readonly id = SessionId('header-invalid')
       readonly createdAt = 123
+      readonly purpose = 'interactive' as const
     }
 
     expect(() => Session.create(SessionId('header-invalid'), undefined, new ExoticHeader()))
@@ -1024,12 +1028,14 @@ describe('Session', () => {
       version: SESSION_FORMAT_VERSION,
       id: SessionId('header-invalid'),
       createdAt: 123,
+      purpose: 'interactive',
       parentSession: 1n,
     } as unknown as SessionHeader)).toThrow(/not losslessly JSON-serializable/)
     expect(() => Session.create(SessionId('header-invalid'), undefined, {
       version: SESSION_FORMAT_VERSION,
       id: SessionId('other'),
       createdAt: 123,
+      purpose: 'interactive',
     })).toThrow(/does not match session id/)
   })
 
@@ -1038,6 +1044,7 @@ describe('Session', () => {
       version: SESSION_FORMAT_VERSION,
       id: SessionId('header-shape'),
       createdAt: 123,
+      purpose: 'interactive',
     }
     const cases: Array<{ header: unknown; error: RegExp }> = [
       { header: 1, error: /not a plain JSON record/ },
@@ -1278,16 +1285,16 @@ describe('SessionStore', () => {
     })
   })
 
-  it('attaches subagent origin and delegationDepth from meta to the header', async () => {
+  it('attaches subagent purpose and delegationDepth from meta to the header', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     const session = ctx.sessions.create(SessionId('delegated-child'), {
-      meta: { parentSession: SessionId('parent'), origin: 'subagent', delegationDepth: 2 },
+      meta: { parentSession: SessionId('parent'), purpose: 'subagent', delegationDepth: 2 },
     })
     expect(session.header).toMatchObject({
       id: 'delegated-child',
       parentSession: 'parent',
-      origin: 'subagent',
+      purpose: 'subagent',
       delegationDepth: 2,
     })
   })
@@ -1306,7 +1313,7 @@ describe('SessionStore', () => {
       { meta: { seedLength: '1' }, error: /seedLength must be a non-negative safe integer/ },
       { meta: { seedLength: 0.5 }, error: /seedLength must be a non-negative safe integer/ },
       { meta: { seedLength: -1 }, error: /seedLength must be a non-negative safe integer/ },
-      { meta: { origin: 'fork' }, error: /origin must be "subagent"/ },
+      { meta: { purpose: 'fork' }, error: /purpose must be "interactive", "subagent", or "maintenance"/ },
       { meta: { delegationDepth: '1' }, error: /delegationDepth must be a non-negative safe integer/ },
       { meta: { delegationDepth: 0.5 }, error: /delegationDepth must be a non-negative safe integer/ },
       { meta: { delegationDepth: -1 }, error: /delegationDepth must be a non-negative safe integer/ },

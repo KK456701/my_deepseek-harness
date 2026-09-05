@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-09-03-memory-and-task-review-integration.md
+2026-09-03-memory-and-task-review-integration.md: 5bf336f87fbe50079f69ab4700b4303761ebceda
+2026-09-03-memory-and-task-review-integration.zh.md: 26566bf1eb72a0e50c6d032387662f31269a5a9f

@@ -19,6 +19,7 @@ const description = 'Ask the user a concise question when you need confirmation,
 export function apply(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'ask_user_question',
+    taskControl: 'ask-user',
     description,
     parameters: {
       questions: {

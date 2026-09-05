@@ -15,6 +15,13 @@ import type { CodexPermissionMode } from './run.ts'
 
 type JsonObject = Record<string, unknown>
 
+/** Frozen per-call overrides for strict, zero-tool JSON calls. */
+export interface CodexWirePolicy {
+  readonly thread: JsonObject
+  readonly turn: JsonObject
+  readonly maxResultBytes: number
+}
+
 /** Product facts owned by the Codex wire after publication. */
 export interface CodexWireFailureFacts {
   readonly stage: 'turn-start' | 'turn'
@@ -240,11 +247,14 @@ export class CodexAppServerWire {
   private inputEnded = false
   private terminalObserved = false
   private closed = false
+  private resultBytes = 0
+  private tokenUsage: unknown = null
 
   constructor(
     private readonly input: Readable,
     output: Writable,
     private readonly permissionMode: CodexPermissionMode,
+    private readonly policy?: CodexWirePolicy,
   ) {
     this.transport = new JsonRpcLineTransport(input, output)
     // Fatal protocol state can arrive after the current guarded operation has
@@ -292,12 +302,23 @@ export class CodexAppServerWire {
         version: '0.0.1',
       },
       capabilities: {
-        experimentalApi: false,
+        experimentalApi: this.policy !== undefined,
         requestAttestation: false,
       },
     }, signal), signal), 'initialize response')
     this.transport.notify('initialized')
     await this.guarded(this.transport.flush(), signal)
+  }
+
+  /**
+   * Read configured MCP identities without opening a thread or invoking a model.
+   * @param signal - Preparation cancellation.
+   * @returns Server names to disable in the frozen thread request.
+   */
+  async configuredMcpServers(signal: AbortSignal): Promise<string[]> {
+    const response = object(await this.guarded(this.transport.request('config/read', { includeLayers: false }, signal), signal), 'config/read response')
+    const config = object(response.config, 'config/read config')
+    return config.mcp_servers === undefined ? [] : Object.keys(object(config.mcp_servers, 'config/read mcp_servers'))
   }
 
   /**
@@ -310,6 +331,7 @@ export class CodexAppServerWire {
       cwd,
       ephemeral: true,
       ...THREAD_PERMISSION_PARAMS[this.permissionMode],
+      ...this.policy?.thread,
     }, signal), signal), 'thread/start response')
     const thread = object(response.thread, 'thread/start thread')
     const id = string(thread.id, 'thread/start thread id')
@@ -340,6 +362,7 @@ export class CodexAppServerWire {
       const response = object(await this.guarded(this.transport.request('turn/start', {
         threadId,
         input: texts.map(text => ({ type: 'text', text, text_elements: [] })),
+        ...this.policy?.turn,
       }, signal), signal), 'turn/start response')
       const turn = object(response.turn, 'turn/start turn')
       this.commitTurnId(string(turn.id, 'turn/start turn id'))
@@ -414,6 +437,12 @@ export class CodexAppServerWire {
       ? [{ type: 'text', text: selected }]
       : []
   }
+
+  /**
+   * Return provider-exposed usage only.
+   * @returns Usage notification or null when absent.
+   */
+  collectUsage(): unknown { return this.tokenUsage }
 
   /**
    * The latest safe unattended permission fact observed for this run.
@@ -611,6 +640,7 @@ export class CodexAppServerWire {
 
   private handleServerRequest(method: string, params: JsonObject): Promise<unknown> {
     try {
+      if (this.policy) throw new Error(`unexpected-tool-use: ${method}`)
       switch (method) {
         case 'item/commandExecution/requestApproval':
         {
@@ -670,11 +700,24 @@ export class CodexAppServerWire {
     }
   }
 
-  private handleNotification(
-    method: string,
-    params: JsonObject,
-    order?: number,
-  ): void {
+  private handleNotification(method: string, params: JsonObject, order?: number): void {
+    if (this.policy && (params.threadId === this.threadId || this.threadId === undefined)) {
+      if (method === 'item/started' || method === 'item/completed') {
+        const item = object(params.item, 'item')
+        if (!['userMessage', 'agentMessage', 'reasoning'].includes(String(item.type))) {
+          throw new Error(`unexpected-tool-use: ${String(item.type)}`)
+        }
+        if (item.type === 'agentMessage' && typeof item.text === 'string'
+          && Buffer.byteLength(item.text) > this.policy.maxResultBytes) {
+          throw new Error('result-overflow')
+        }
+      }
+      if (method === 'item/agentMessage/delta' && typeof params.delta === 'string') {
+        this.resultBytes += Buffer.byteLength(params.delta)
+        if (this.resultBytes > this.policy.maxResultBytes) throw new Error('result-overflow')
+      }
+      if (method === 'thread/tokenUsage/updated') this.tokenUsage = params.tokenUsage ?? null
+    }
     if (method === 'turn/started') {
       const threadId = string(params.threadId, 'turn/started thread id')
       if (threadId !== this.threadId) return

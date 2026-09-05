@@ -55,7 +55,7 @@ function liveAgent(
   id: string,
   turns: number,
   tail: Tail = 'none',
-  lineage: { parentSession?: SessionId; origin?: 'subagent' } = {},
+  lineage: { parentSession?: SessionId; purpose?: 'subagent' } = {},
 ): Session {
   const session = ctx.sessions.create(sid(id), { meta: { cwd: '/proj', ...lineage } })
   for (let turn = 1; turn <= turns; turn++) {
@@ -115,11 +115,11 @@ describe('sessions.fork', () => {
     accounted.push(owner.id)
     const child = liveAgent(ctx, 'session-child', 1, 'none', {
       parentSession: owner.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     })
     const grandchild = liveAgent(ctx, 'session-grandchild', 1, 'none', {
       parentSession: child.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     })
     ctx.provide('sessionQuery', {
       traceSession: vi.fn(() => Promise.resolve({
@@ -143,7 +143,7 @@ describe('sessions.fork', () => {
       parentSession: grandchild.id,
       cwd: '/proj',
     })
-    expect(ctx.sessions.get(response.result.value.sessionId)?.header.origin).toBeUndefined()
+    expect(ctx.sessions.get(response.result.value.sessionId)?.header.purpose).toBe('interactive')
     await ctx.fiber.dispose()
   })
 
@@ -157,7 +157,7 @@ describe('sessions.fork', () => {
       createdAt: 1,
       cwd: '/proj',
       parentSession: parentId,
-      origin: 'subagent',
+      purpose: 'subagent',
     }
     const events = [
       { type: 'turn/start', seq: 0, time: 1, data: { turn: 1, trigger: { kind: 'message', source: { kind: 'user' } } } },
@@ -195,7 +195,7 @@ describe('sessions.fork', () => {
       parentSession: sourceId,
       cwd: '/proj',
     })
-    expect(ctx.sessions.get(response.result.value.sessionId)?.header.origin).toBeUndefined()
+    expect(ctx.sessions.get(response.result.value.sessionId)?.header.purpose).toBe('interactive')
     await ctx.fiber.dispose()
   })
 

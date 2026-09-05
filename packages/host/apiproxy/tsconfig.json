@@ -36,6 +36,9 @@
       "path": "../../llm/llm"
     },
     {
+      "path": "../../memory/memory"
+    },
+    {
       "path": "../../core/agent"
     },
     {

@@ -3,6 +3,27 @@ import type {
   ConversationPromptSnapshot, ConversationViewNode, PartialAssistant,
   RequestPromptChange, RequestView, RunningToolCall, ToolCallBlock,
 } from '@deepseek-ai/dsh-client-runtime/client'
+import type { MemoryRequestContext } from '@deepseek-ai/dsh-memory'
+import type { TrajectoryCellProps } from './trajectory-record.ts'
+
+/** Consumer-owned non-Worker record with an explicit historical location and stable identity. */
+export interface TrajectoryRecordContribution {
+  readonly seq: number
+  readonly turn: number | null
+  /** Exact Step when the producer can locate the lifecycle event. */
+  readonly step?: number
+  /** Placement inside the Step; absent records remain chronological turn-level rows. */
+  readonly phase?: 'before-step' | 'after-step' | 'before-delivery' | 'after-delivery' | 'evaluation'
+  readonly group: string
+  readonly cell: Omit<TrajectoryCellProps, 'index'>
+}
+
+/** Durable selection metadata; summary text stays in the request header. */
+export interface TrajectoryMemoryContext {
+  readonly seq: number
+  readonly time: number
+  readonly context: MemoryRequestContext
+}
 
 /** Request-header facts retained by the Trajectory target. */
 export interface TrajectoryRequestHeaderState {
@@ -15,6 +36,8 @@ export interface TrajectoryRequestHeaderState {
 
 /** One independently assembled contribution to the legacy Trajectory ledger. */
 export type TrajectoryContribution =
+  | { readonly kind: 'record'; readonly record: TrajectoryRecordContribution }
+  | { readonly kind: 'memory-context'; readonly memory: TrajectoryMemoryContext }
   | {
     readonly kind: 'node'
     readonly node: ConversationNode
@@ -59,6 +82,8 @@ export interface TrajectoryConversationViewNode extends ConversationViewNode {
 
 /** Stage-oriented Trajectory data assembled from registered business Contexts. */
 export interface TrajectorySnapshot {
+  readonly records?: readonly TrajectoryRecordContribution[]
+  readonly memoryContexts?: readonly TrajectoryMemoryContext[]
   readonly eventNodes: readonly ConversationNode[]
   readonly eventLocations: ReadonlyMap<number, ConversationLocation>
   readonly requests: readonly RequestView[]

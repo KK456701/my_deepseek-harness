@@ -822,6 +822,7 @@ describe('completion notices', () => {
     ctx.jobs.start(p.spec)
 
     const pending = call(ctx, 'job_output', { job_id: 'subagent-1', wait: true }, owner)
+    await tick()
     p.settle({ status: 'completed', output: 'answer' })
     expect(text(await pending)).toContain('answer')
     expect(inject).not.toHaveBeenCalled()

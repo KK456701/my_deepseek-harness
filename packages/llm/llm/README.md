@@ -21,6 +21,8 @@ Each provider adapter supplies its resolved route policy. Omitting provider conf
 - `ctx.llm.registerModelDiscovery(settingsNs: string, discover): () => void` Offer to interrogate provider endpoints for the settings namespace this plugin owns. One offer per namespace (`INVALID_DISCOVERY`/`DUPLICATE_DISCOVERY`), disposed with the calling fiber.
 - `ctx.llm.listModelDiscoveryNamespaces(): string[]` List the namespaces that can interrogate an endpoint, so a surface offers the action only where it works.
 - `ctx.llm.discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest): Promise<LlmDiscoveredModel[]>` Ask one endpoint which models it advertises.
+- `ctx.llm.registerBalanceQuery(settingsNs: string, query): () => void` Offer to query one provider account's balance for the settings namespace this plugin owns. The adapter resolves its own endpoint and credential from its registered configuration; the request carries only caller cancellation. One offer per namespace (`INVALID_BALANCE_QUERY`/`DUPLICATE_BALANCE_QUERY`), disposed with the calling fiber.
+- `ctx.llm.queryBalance(settingsNs: string, request?: LlmBalanceRequest): Promise<LlmAccountBalance[]>` Query one registered provider namespace's account balance. Lines without a currency or total fail with `INVALID_BALANCE`; an unserved namespace fails with `NO_BALANCE_QUERY`.
 - `ctx.llm.providerRetryPolicy(provider: string): ResolvedRetryPolicy` Return the provider-owned retry policy captured during registration, with normal defaults resolved.
 - `ctx.llm.listModels(provider: string): Promise<LlmModelInfo[]>` Discover the models one registered provider currently advertises.
 - `ctx.llm.resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>` Resolve validated exact-model identity plus available context, output-default, and reasoning metadata from the owning adapter, with optional cancellation for asynchronous adapters.
@@ -86,6 +88,10 @@ Every adapter that puts a credential in an HTTP header judges it the same way be
 ### Real adapters
 
 Two adapters implement `LlmAdapter` on different internals: [`@deepseek-ai/dsh-llm-deepseek`](../llm-deepseek) uses direct fetch with `eventsource-parser` SSE framing for the `deepseek-official` route, while [`@deepseek-ai/dsh-llm-pi-ai`](../llm-pi-ai) dynamically resolves configured provider/model pairs through `@earendil-works/pi-ai`. Both follow the `StreamChunk` conventions in `types.ts`: usage precedes finish and tool arguments remain raw strings. Adapter implementations may throw or emit a failure finish internally; `LlmRuntime` exposes both as a terminal failure finish. See [the twin LLM adapters](../../../.agents/notes/implemented/architecture/2026-06-13-twin-llm-adapters.md) for the adapter rationale and [the terminal-failure decision](../../../.agents/notes/implemented/architecture/2026-07-29-terminal-llm-stream-failures.md) for the service boundary.
+
+## Auxiliary request attribution
+
+`GenerateOptions.purpose` distinguishes extraction, final/shadow review, progress observation and task authorization from ordinary Worker requests. Optional `audit` carries a model-hidden call identity and retry ordinal; adapters must not turn these fields into prompt text. Consumers persist actual usage separately from byte estimates and count reasoning tokens within output, not in addition to it.
 
 ## Model Experience
 

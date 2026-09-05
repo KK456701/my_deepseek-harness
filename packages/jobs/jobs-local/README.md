@@ -10,6 +10,8 @@ Process-local implementation of the [`@deepseek-ai/dsh-jobs`](../jobs/README.md)
 
 At capacity, `start()` fails before producer execution and id allocation with an error that names the limit and tells the model to use `job_kill`, wait for the job to finish stopping, and retry. The registry does not queue, preempt, or maintain a second mutable counter.
 
+Public and internal jobs are admitted through separate buckets. Internal jobs are lifecycle-only records: public list, lookup, read, kill, wait, completion listeners, and change listeners treat their ids as unknown. The registry still cancels and awaits them during owner or service disposal, then removes the record immediately after settlement.
+
 ## Lifecycle
 
 Jobs belong to their owner and backend, not the producer tool fiber, so producer and controller reloads do not stop them. The first job for an owner attaches one awaited effect to the exact `Agent` scope. Owner disposal cancels that object's jobs, awaits producer quiescence, and removes their snapshots; reused agent or session ids cannot redirect an old cleanup.

@@ -425,7 +425,7 @@ describe('Host Workspace increments', () => {
       meta: {
         cwd: '/tmp',
         parentSession: SessionId('session-parent'),
-        origin: 'subagent',
+        purpose: 'subagent',
       },
     })
 
@@ -434,11 +434,11 @@ describe('Host Workspace increments', () => {
         type: 'host/session-added',
         sessionId: childId,
         parentSessionId: 'session-parent',
-        origin: 'subagent',
+        purpose: 'subagent',
       },
     })
     expect(expectOk(await api.sessions.list(request({}))).items).toContainEqual(
-      expect.objectContaining({ sessionId: childId, origin: 'subagent' }),
+      expect.objectContaining({ sessionId: childId, purpose: 'subagent' }),
     )
     abort.abort()
   })

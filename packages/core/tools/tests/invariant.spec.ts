@@ -18,6 +18,7 @@ async function setup(): Promise<Context> {
 }
 
 const execution = (overrides: Partial<ToolExecution> = {}): ToolExecution => ({
+  started: false, approvedOnce: false,
   token: Symbol('tool') as ToolExecutionToken,
   callId: CallId('call-1'),
   name: 'echo',

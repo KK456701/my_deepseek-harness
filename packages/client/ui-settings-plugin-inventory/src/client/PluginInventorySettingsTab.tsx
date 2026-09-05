@@ -17,6 +17,20 @@ export interface PluginInventorySettingsTabInjected {
 type PluginInventoryEntry = PluginInventorySnapshot['entries'][number]
 type PluginFiberPhase = PluginInventoryEntry['fiberPhase']
 
+const CATEGORY_IDS = [
+  'all',
+  'tools',
+  'agents',
+  'modelContext',
+  'sessions',
+  'interface',
+  'runtime',
+  'other',
+] as const
+
+type PluginCategory = Exclude<(typeof CATEGORY_IDS)[number], 'all'>
+type PluginCategoryFilter = (typeof CATEGORY_IDS)[number]
+
 /** Full component props assembled by the Settings slot renderer. */
 export type PluginInventorySettingsTabProps =
   PropsRuntime<'settings.plugins.tab'>
@@ -36,6 +50,34 @@ const PHASE_KEYS = {
   unloading: 'unloading',
 } satisfies Record<Exclude<PluginFiberPhase, null>, PluginInventoryLocaleKey>
 
+const CATEGORY_KEYS = {
+  all: 'categoryAll',
+  tools: 'categoryTools',
+  agents: 'categoryAgents',
+  modelContext: 'categoryModelContext',
+  sessions: 'categorySessions',
+  interface: 'categoryInterface',
+  runtime: 'categoryRuntime',
+  other: 'categoryOther',
+} satisfies Record<PluginCategoryFilter, PluginInventoryLocaleKey>
+
+const CATEGORY_PREFIXES = {
+  agents: [
+    'agent', 'command', 'commands', 'goal', 'plan', 'preset', 'ralph', 'subagent', 'todo',
+    'user-questions', 'workflow',
+  ],
+  modelContext: [
+    'attachment', 'compaction', 'context', 'llm', 'skill', 'spill', 'system-prompt', 'token-meter',
+  ],
+  sessions: ['message-feedback', 'session', 'storage', 'workspace'],
+  interface: [
+    'api-remotes', 'client', 'connection', 'cordis-client-runner', 'cordis-host-runner',
+    'directory-picker', 'host-apiproxy', 'host-directory-picker', 'host-plugin-inventory',
+    'host-webserver', 'locale', 'modules', 'plugin-inventory', 'ui', 'web-app', 'web-runtime',
+    'web-startup', 'webserver',
+  ],
+} as const satisfies Record<Exclude<PluginCategory, 'tools' | 'runtime' | 'other'>, readonly string[]>
+
 /** Localized accessible label for one root Fiber phase. */
 function phaseLabel(
   phase: PluginFiberPhase,
@@ -53,6 +95,27 @@ function moduleShortName(moduleName: string): string {
     .replace(/^dsh-(?:host-|client-)?/, '')
 }
 
+/** Whether a normalized package name begins with one complete category prefix. */
+function hasCategoryPrefix(name: string, prefixes: readonly string[]): boolean {
+  return prefixes.some(prefix => name === prefix || name.startsWith(`${prefix}-`))
+}
+
+/** Assign one display category from stable DSH and Cordis package-name prefixes. */
+function pluginCategory(moduleName: string): PluginCategory {
+  const name = moduleShortName(moduleName).toLocaleLowerCase()
+  if (name === 'tools' || name.startsWith('tool-')) return 'tools'
+  if (hasCategoryPrefix(name, CATEGORY_PREFIXES.agents)) return 'agents'
+  if (hasCategoryPrefix(name, CATEGORY_PREFIXES.modelContext)) return 'modelContext'
+  if (hasCategoryPrefix(name, CATEGORY_PREFIXES.sessions)) return 'sessions'
+  if (hasCategoryPrefix(name, CATEGORY_PREFIXES.interface)) return 'interface'
+  if (
+    moduleName.startsWith('@deepseek-ai/dsh-')
+    || moduleName.startsWith('@deepseek-ai/cordis-')
+    || moduleName.startsWith('cordis:')
+  ) return 'runtime'
+  return 'other'
+}
+
 /** Whether an inventory row matches the local catalog query. */
 function matches(entry: PluginInventoryEntry, normalizedQuery: string): boolean {
   if (normalizedQuery.length === 0) return true
@@ -65,6 +128,7 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
   const catalogId = useId()
   const [request, setRequest] = useState(0)
   const [query, setQuery] = useState('')
+  const [category, setCategory] = useState<PluginCategoryFilter>('all')
   const [expanded, setExpanded] = useState<PluginInventoryEntry['entryId'] | null>(null)
   const [state, setState] = useState<ViewState>({ status: 'loading' })
 
@@ -78,11 +142,21 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
   }, [list, request])
 
   const normalizedQuery = query.trim().toLocaleLowerCase()
+  const categoryCounts = useMemo(() => {
+    const counts = Object.fromEntries(CATEGORY_IDS.map(id => [id, 0])) as Record<PluginCategoryFilter, number>
+    if (state.status !== 'ready') return counts
+    counts.all = state.snapshot.entries.length
+    for (const entry of state.snapshot.entries) counts[pluginCategory(entry.moduleName)] += 1
+    return counts
+  }, [state])
   const filteredEntries = useMemo(
     () => state.status === 'ready'
-      ? state.snapshot.entries.filter(entry => matches(entry, normalizedQuery))
+      ? state.snapshot.entries.filter(entry => (
+        (category === 'all' || pluginCategory(entry.moduleName) === category)
+        && matches(entry, normalizedQuery)
+      ))
       : [],
-    [normalizedQuery, state],
+    [category, normalizedQuery, state],
   )
 
   useEffect(() => {
@@ -118,6 +192,20 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
               onChange={(event) => { setQuery(event.currentTarget.value) }}
             />
           </label>
+          <div className={css.categories} role="group" aria-label={t('categories')}>
+            {CATEGORY_IDS.map(id => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={category === id}
+                data-category-filter={id}
+                onClick={() => { setCategory(id) }}
+              >
+                <span>{t(CATEGORY_KEYS[id])}</span>
+                <span className={css.categoryCount} aria-hidden="true">{categoryCounts[id]}</span>
+              </button>
+            ))}
+          </div>
           <div className={css.catalogHeading}>
             <h3>{t('catalog')}</h3>
             <span data-plugin-count={filteredEntries.length}>{filteredEntries.length}</span>
@@ -131,6 +219,7 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
               {filteredEntries.map((entry) => {
                 const status = phaseLabel(entry.fiberPhase, t)
                 const title = moduleShortName(entry.moduleName)
+                const entryCategory = pluginCategory(entry.moduleName)
                 const configuration = t(entry.enabled ? 'enabledTag' : 'disabledTag')
                 const open = expanded === entry.entryId
                 const detailId = `${catalogId}-details-${encodeURIComponent(entry.entryId)}`
@@ -139,6 +228,7 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
                     className={css.card}
                     key={entry.entryId}
                     data-plugin-entry={entry.entryId}
+                    data-plugin-category={entryCategory}
                     data-open={open ? 'true' : undefined}
                   >
                     <button
@@ -172,6 +262,10 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
                       <div className={css.cardDetails} id={detailId}>
                         <code className={css.entryValue} data-loader-entry>{entry.entryId}</code>
                         <dl className={css.details}>
+                          <div>
+                            <dt>{t('category')}</dt>
+                            <dd>{t(CATEGORY_KEYS[entryCategory])}</dd>
+                          </div>
                           <div>
                             <dt>{t('configuration')}</dt>
                             <dd>{configuration}</dd>

@@ -4,7 +4,11 @@ English | [中文](README.zh.md)
 
 Tool registry and execution pipeline. Tool plugins register their schemas and executors; the agent loop executes each call through `tools/pre-execute` (the extensible allow/deny gate) → monotonic registered guards → `tools/execute` (an around-dispatch wrapper for timeout/retry/metrics plugins) → `tools/post-execute` (inspect/replace the result, attach context) → the definition-owned `finalizeContent` boundary → the observe-only `tools/result` notification. The registry also owns HOW its tools are presented to the model — its `mode` config selects native function calling, [Code Mode](#code-mode), or both, and one agent shadows that default for itself with `presentAs`.
 
+`ToolExecution.started` records actual entry into the tool body, not dispatch intent; `approvedOnce` belongs to that exact execution. Final synchronous guards run after asynchronous approval and wrappers. Runtime-only `repeatPolicy: polling` requires a read-only tool and a provider callback that validates the result's active target; nested polling results retain this metadata too.
+
 ## Service: `ToolRuntime` (ctx key: `tools`)
+
+`tools/dispatch-ready` is a final asynchronous pre-body waterfall after around-dispatch wrappers. The registry then checks cancellation and registered guards synchronously before calling the body. Definition-owned `effect` and `taskControl` metadata support execution policy; model arguments cannot set these values. Plan/question controls do not imply authority for ordinary task tools.
 
 ### Config
 

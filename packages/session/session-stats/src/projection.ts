@@ -137,6 +137,10 @@ export const sessionStatsProjectionDefinition: ProjectionDefinition<'sessionStat
         }
         return next
       }
+      case 'llm/audited-call':
+        return Number.isFinite(event.data.durationMs) && event.data.durationMs >= 0
+          ? { ...state, llmMs: state.llmMs + event.data.durationMs }
+          : state
       case 'tool/call':
         return { ...state, pendingCalls: { ...state.pendingCalls, [event.data.callId]: event.time } }
       case 'tool/result': {

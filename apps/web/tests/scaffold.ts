@@ -775,6 +775,7 @@ export async function seedSession(
     version: SESSION_FORMAT_VERSION,
     id: SessionId(id),
     createdAt: Date.now() - 60_000,
+    purpose: 'interactive',
     cwd: scaffold.workspaceCwd,
     delegationDepth: 0,
     ...agentPreset === undefined ? {} : { agentPreset },
@@ -793,6 +794,7 @@ export async function seedBlankSession(
     version: SESSION_FORMAT_VERSION,
     id: SessionId(id),
     createdAt: Date.now() - 60_000,
+    purpose: 'interactive',
     cwd,
     delegationDepth: 0,
   }

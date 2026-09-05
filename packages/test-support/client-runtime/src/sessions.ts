@@ -231,6 +231,7 @@ export class TestSessions implements ISessions {
     const summary: SessionSummary = {
       id,
       displayTitle: fixture.id,
+      purpose: 'interactive',
       running: false,
       blank: false,
       updatedAt: this.records.size + 1,

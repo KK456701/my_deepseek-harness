@@ -9,7 +9,7 @@
 import { pathToFileURL } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { parseEnv } from 'node:util'
-import { basename, dirname, isAbsolute, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import * as yaml from 'js-yaml'
 import { Context, type FiberState } from '@deepseek-ai/cordis'
 import Loader, { type Entry, type EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
@@ -25,6 +25,35 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Harness-home path resolver available to Loader `!!js` config expressions. */
     dshHomePath?: typeof dshHomePath
+    /** Active-profile path resolver supplied by the profile launcher before Loader entries mount. */
+    profilePath?: ProfilePathResolver
+  }
+}
+
+/** Resolve paths beneath one validated profile directory. */
+export type ProfilePathResolver = (...segments: string[]) => string
+
+/**
+ * Create the Loader-expression resolver for one already validated profile directory.
+ * A zero-segment call returns the profile directory; supplied segments must be
+ * non-empty, relative, and remain below that directory after normalization.
+ * @param profileDir - absolute directory returned by {@link loadProfile}.
+ * @returns a resolver safe to expose as `ctx.profilePath`.
+ */
+export function createProfilePathResolver(profileDir: string): ProfilePathResolver {
+  if (!isAbsolute(profileDir)) throw new Error('profilePath root must be absolute')
+  const root = resolve(profileDir)
+  return (...segments: string[]): string => {
+    for (const segment of segments) {
+      if (segment.length === 0) throw new Error('profilePath segments must be non-empty')
+      if (isAbsolute(segment)) throw new Error(`profilePath segment must be relative: ${JSON.stringify(segment)}`)
+    }
+    const target = resolve(root, ...segments)
+    const offset = relative(root, target)
+    if (offset === '..' || offset.startsWith(`..${sep}`) || isAbsolute(offset)) {
+      throw new Error(`profilePath escapes the active profile: ${JSON.stringify(segments)}`)
+    }
+    return target
   }
 }
 

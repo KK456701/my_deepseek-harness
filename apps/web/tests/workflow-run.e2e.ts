@@ -36,7 +36,7 @@ describe.skipIf(MODE === 'record')('web e2e: durable workflow run in Chat', () =
   const waitForParentSettlement = (): Promise<SessionId> => new Promise((resolve, reject) => {
     let dispose = (): void => {}
     dispose = scaffold.ctx.on('session/event', (session: Session, event: SessionEvent) => {
-      if (event.type !== 'turn/end' || session.header.origin === 'subagent') return
+      if (event.type !== 'turn/end' || session.header.purpose === 'subagent') return
       dispose()
       void (async () => {
         await scaffold.ctx.agents.get(session.id)?.whenIdle()

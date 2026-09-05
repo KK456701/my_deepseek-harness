@@ -44,7 +44,7 @@ describe('dsh-session-query-sqlite real Loader path', () => {
     const query = await ctx.plugin(unwrapped, { path: searchPath })
 
     const id = SessionId('loader-path')
-    await ctx.sessionPersistence.create({ version: SESSION_FORMAT_VERSION, id, createdAt: 10 })
+    await ctx.sessionPersistence.create({ version: SESSION_FORMAT_VERSION, id, createdAt: 10, purpose: 'interactive' })
     await ctx.sessionPersistence.append(id, [{
       type: 'user/message',
       seq: 0,

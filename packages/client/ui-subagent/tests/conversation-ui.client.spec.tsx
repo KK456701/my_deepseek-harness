@@ -54,6 +54,7 @@ function props(
         id: CHILD,
         title: '正在扫描项目文件',
         displayTitle: 'worker',
+        purpose: 'subagent',
         running: true,
         blank: false,
         updatedAt: Date.now(),
@@ -81,6 +82,7 @@ function summary(id: SessionId, updatedAt: number): SessionSummary {
   return {
     id,
     displayTitle: id,
+    purpose: 'interactive',
     running: false,
     blank: false,
     updatedAt,
@@ -93,18 +95,18 @@ describe('SubagentCatalogAction', () => {
       [CHILD]: {
         ...summary(CHILD, Date.now()),
         parentId: PARENT,
-        origin: 'subagent',
+        purpose: 'subagent',
       },
       [GRANDCHILD]: {
         ...summary(GRANDCHILD, Date.now()),
         parentId: CHILD,
-        origin: 'subagent',
+        purpose: 'subagent',
         running: true,
       },
       ['child-2' as SessionId]: {
         ...summary('child-2' as SessionId, Date.now()),
         parentId: PARENT,
-        origin: 'subagent',
+        purpose: 'subagent',
       },
     }
     const view = render(<SubagentCatalogAction {...props(catalog(), {}, summaries)} />)
@@ -124,12 +126,12 @@ describe('SubagentCatalogAction', () => {
     const fork = 'fork' as SessionId
     const forkChild = 'fork-child' as SessionId
     render(<SubagentCatalogAction {...props(catalog(), {}, {
-      [CHILD]: { ...summary(CHILD, 1), parentId: PARENT, origin: 'subagent' },
+      [CHILD]: { ...summary(CHILD, 1), parentId: PARENT, purpose: 'subagent' },
       ['child-2' as SessionId]: {
-        ...summary('child-2' as SessionId, 1), parentId: PARENT, origin: 'subagent',
+        ...summary('child-2' as SessionId, 1), parentId: PARENT, purpose: 'subagent',
       },
       [fork]: { ...summary(fork, 1), parentId: PARENT },
-      [forkChild]: { ...summary(forkChild, 1), parentId: fork, origin: 'subagent', running: true },
+      [forkChild]: { ...summary(forkChild, 1), parentId: fork, purpose: 'subagent', running: true },
     })} />)
 
     const trigger = screen.getByRole('button', { name: '2 个子代理' })
@@ -167,7 +169,7 @@ describe('SubagentCatalogAction', () => {
       }],
     }), {}, {
       [CHILD]: {
-        ...summary(CHILD, Date.now()), parentId: PARENT, origin: 'subagent', running: true,
+        ...summary(CHILD, Date.now()), parentId: PARENT, purpose: 'subagent', running: true,
       },
     })
     const translate = vi.fn(base.t)
@@ -306,7 +308,7 @@ describe('SubagentCatalogAction', () => {
       return [id, {
         ...summary(childId, updatedAt),
         parentId: PARENT,
-        origin: 'subagent' as const,
+        purpose: 'subagent' as const,
         running: activity === 'running',
         projectionValues: {
           subagentTiming: {
@@ -384,10 +386,10 @@ describe('SubagentCatalogAction', () => {
     const secondGrandchild = 'grandchild-2' as SessionId
     const summaries = {
       [GRANDCHILD]: {
-        ...summary(GRANDCHILD, 1), parentId: CHILD, origin: 'subagent' as const,
+        ...summary(GRANDCHILD, 1), parentId: CHILD, purpose: 'subagent' as const,
       },
       [secondGrandchild]: {
-        ...summary(secondGrandchild, 1), parentId: CHILD, origin: 'subagent' as const,
+        ...summary(secondGrandchild, 1), parentId: CHILD, purpose: 'subagent' as const,
         running: true,
       },
     }
@@ -500,10 +502,10 @@ describe('SubagentCatalogAction', () => {
     const second = 'child-2' as SessionId
     const summaries = {
       [CHILD]: {
-        ...summary(CHILD, 1), parentId: PARENT, origin: 'subagent' as const,
+        ...summary(CHILD, 1), parentId: PARENT, purpose: 'subagent' as const,
       },
       [second]: {
-        ...summary(second, 1), parentId: PARENT, origin: 'subagent' as const, running: true,
+        ...summary(second, 1), parentId: PARENT, purpose: 'subagent' as const, running: true,
       },
     }
     const absent = props(undefined, {}, summaries)

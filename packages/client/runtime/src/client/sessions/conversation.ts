@@ -464,7 +464,7 @@ export interface ConversationSnapshot {
   loadingOlder: boolean
   promptError: PromptError | null
   /**
-   * Whether this session still has an empty log (no user message yet).
+   * Whether this session is reusable: no turn or explicit session/retained record.
    * Mirrors the host summary's derived blank bit: seeded from `session.list`
    * / the `host/session-added` frame, flipped false by the first ACCEPTED
    * prompt locally (on the RPC success response — acceptance proves the

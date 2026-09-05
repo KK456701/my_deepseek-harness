@@ -54,6 +54,13 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ```ts cordis-catalog
 /**
+ * Observe plan approval without treating a mode toggle as authorization.
+ * @param observe - Captures live guards before a user reviews the exact plan.
+ * @returns Disposer that removes the observer for future reviews.
+ */
+observeApprovals(observe: (request: PlanApprovalRequest) => PlanApprovalObserver): () => void
+
+/**
  * Read the logged plan state and any selected state awaiting the next
  * accepted in-turn pre-step.
  *
@@ -83,5 +90,5 @@ set(agent: Agent, active: boolean): 'committed' | 'queued' | 'cancelled' | 'noop
 
 Types: [Agent](core.md)
 
-Source: [`packages/plan/plan-mode/src/index.ts:188`](../../packages/plan/plan-mode/src/index.ts)
+Source: [`packages/plan/plan-mode/src/index.ts:210`](../../packages/plan/plan-mode/src/index.ts)
 <!-- END GENERATED cordis-surface -->

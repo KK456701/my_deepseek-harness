@@ -15,9 +15,12 @@ import { registerTrajectoryAssistantDefinition } from './trajectory-assistant-de
 import { registerTrajectoryCompactionDefinitions } from './trajectory-compaction-definition.ts'
 import { registerTrajectoryMessageDefinitions } from './trajectory-message-definitions.ts'
 import { registerTrajectoryRequestHeaderDefinition } from './trajectory-request-header-definition.ts'
+import { registerTrajectoryMemoryDefinition } from './trajectory-memory-definition.ts'
 import { registerTrajectoryConversationView } from './trajectory-snapshot-builder.ts'
 import { registerTrajectoryToolDefinition } from './trajectory-tool-definition.ts'
 import { TrajectoryView, type TrajectoryViewInjected } from './TrajectoryView.tsx'
+
+export type { TrajectoryRecordContribution, TrajectoryConversationViewNode } from './trajectory-contract.ts'
 
 /** Required services: the conversation slot, registries, ordinary Session paging, and the locale service. */
 export const inject = ['slots', 'conversationEvents', 'conversationViews', 'sessions', 'locale']
@@ -36,6 +39,7 @@ export function apply(ctx: Context): void {
   const duration = createTrajectoryDurationStore()
   registerTrajectoryMessageDefinitions(ctx)
   registerTrajectoryRequestHeaderDefinition(ctx)
+  registerTrajectoryMemoryDefinition(ctx)
   registerTrajectoryAssistantDefinition(ctx)
   registerTrajectoryToolDefinition(ctx)
   registerTrajectoryCompactionDefinitions(ctx)

@@ -51,12 +51,20 @@ export interface DirectoryFlowOwnerProps {
   onError: (message: string) => void
 }
 
+/** Workspace-section header facts shared with optional action contributions. */
+export interface WorkspaceHeaderActionOwnerProps {
+  /** Whether the sidebar has room for labeled hover help and the memory action. */
+  wide: boolean
+}
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** Directory-flow hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
     'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
     'sidebar.workspaces.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
+    /** Optional actions placed before the workspace view and add controls. */
+    'sidebar.workspaces.header.actions': { kind: 'list'; scope: 'root'; owner: WorkspaceHeaderActionOwnerProps }
   }
 }
 
@@ -142,7 +150,7 @@ export type WorkspaceBrowserInjected = {
 /** Full browser props: shell owner share + viewing store + injected actions + the locale seat. */
 export type WorkspaceBrowserProps =
   PropsRuntime<'sidebar.workspaces'>
-  & PropsRenderSlots<'sidebar.workspaces.directoryFlow'>
+  & PropsRenderSlots<'sidebar.workspaces.directoryFlow' | 'sidebar.workspaces.header.actions'>
   & PropsStore<ReturnType<typeof createWorkspaceViewStore>>
   & Omit<WorkspaceBrowserInjected, 'hooks'>
   & PropsHooks<WorkspaceBrowserInjected['hooks']>

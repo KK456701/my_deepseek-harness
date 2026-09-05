@@ -7,13 +7,12 @@ const sid = (id: string) => id as SessionId
 function summary(
   id: string,
   parentId?: SessionId,
-  origin?: 'subagent',
+  purpose: 'interactive' | 'subagent' = 'interactive',
   running = false,
 ): SessionSummary {
   return {
-    id: sid(id), displayTitle: id, running, blank: false, updatedAt: 0,
+    id: sid(id), displayTitle: id, purpose, running, blank: false, updatedAt: 0,
     ...(parentId === undefined ? {} : { parentId }),
-    ...(origin === undefined ? {} : { origin }),
   }
 }
 

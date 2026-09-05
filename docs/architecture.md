@@ -49,6 +49,7 @@ Here are some core packages that contribute to the Cordis tree.
 | [`core/agent-loop`](subsystems/core.md) | The default driver implementing that interface | `ctx.agentLoop` |
 | [`core/scope`](subsystems/scope.md) | The per-agent scoped-registration primitive | library, no key |
 | [`llm/llm`](subsystems/llm-streaming.md) | Message and stream vocabulary plus the adapter seam | `ctx.llm` |
+| [`memory`](subsystems/memory.md) | Profile-scoped long-term memory, immutable generations, recall, and background consolidation | `ctx.memory` |
 
 ## Events
 
@@ -72,28 +73,33 @@ turn/start
      reject, or a first enter rewritten empty -> close the turn with no step
      step/start
      append entered messages as user/message
+     agent/request-starting
      derive model history from the log
-     agent/request -> llm/stream -> assistant/chunk* -> assistant/message
-     tool/call* -> tools/pre-execute -> tools/execute -> tools/post-execute -> tool/result*
+     agent/request -> llm/stream
+       live: assistant/chunk* -> assistant/message
+       deferred: private durable chunks -> agent/final-candidate -> guarded assistant/message
+     tool/call* -> tools/pre-execute -> tools/execute -> tools/dispatch-ready -> body -> tools/post-execute -> tool/result*
      step/end
      tools owe another request, or next-step input arrived -> claim -> next step
   -> agent/turn-stopping
 turn/end
 ```
 
-`turn/*`, `step/*`, `user/message`, `assistant/*`, and `tool/*` are durable session events; the rest are live extension points across three domains. `agent/pre-step`, `agent/request`, `llm/stream`, and the three `tools/*` events are waterfalls, whose listeners must call `next()` to delegate; `agent/turn-stopping` is serial and has no `next()`.
+`turn/*`, `step/*`, `user/message`, `assistant/*`, and `tool/*` are durable session events; the rest are live extension points across three domains. `agent/request-starting` is a synchronous broadcast for each request attempt, including retries. `agent/pre-step`, `agent/request`, `agent/assistant-delivery`, `agent/final-candidate`, `llm/stream`, and the four `tools/*` events are waterfalls, whose listeners must call `next()` to delegate unless they own the result; `agent/turn-stopping` is serial and has no `next()`. `tools/dispatch-ready` runs after dispatch wrappers, followed by synchronous cancellation and guard checks immediately before the tool body.
 
 Input reaches the driver through one inbox. Some messages wake it immediately; injected context waits in the inbox until another message does.
 
 `agent/pre-step` decides what the model sees. Listeners may rewrite the claimed messages or reject them outright; a rejected or empty first claim still closes a durable turn that spent no step, so the log records the attempt. Each step reads the prompt sections and tool schemas that plugins registered.
 
+Ordinary delivery remains live. An opt-in plugin can instead provide a durable staging writer through `agent/assistant-delivery`. Tool-call responses commit after staging so execution can proceed; a final text Candidate reaches `agent/final-candidate`, whose synchronous validator runs immediately before the ordinary Assistant Message append. The [experimental Task Contract and Final Gate](subsystems/task-contract-final-gate.md) use this path to prevent stale or incomplete final answers without putting rejected drafts in model history.
+
 Details: the [sequence diagram](agent-lifecycle.md), the [tool pipeline](tool-execution-pipeline.md), and [cancellation and error recovery](subsystems/core.md#the-agent-handle).
 
 ## Session log
 
-The session log is the source of the context the model sees. `deriveMessages()` projects model history from it, and raw `assistant/chunk` events preserve replay and UI fidelity. Fork, resume, transcripts, telemetry, and persistence all derive from this stream.
+The session log is the source of the context an interactive model request sees. `deriveMessages()` projects model history from it, and raw `assistant/chunk` events preserve replay and UI fidelity. Fork, resume, transcripts, telemetry, and persistence all derive from this stream.
 
-**Model-visible means logged.** Anything that reaches a model request must be reconstructable from the log, and a runtime invariant asserts it. This is why a new model-visible input requires a new session event: extend `SessionEventMap` and render from the log.
+**Every model request is durably reconstructable before dispatch.** Interactive requests reconstruct from the session log, so a new interactive model-visible input requires a new `SessionEventMap` event. An explicitly approved capability-owned one-shot may instead persist its exact frozen request and observed result in a private audit store; a state transition derived from that result occurs only after the result is durable. Agent-style maintenance with tools still uses a private Session so its prompt, calls, results, and final response remain reconstructable. The [request reconstruction decision](../.agents/notes/implemented/architecture/2026-07-05-reconstructable-requests.md) owns the rule, and the [capability-owned audit decision](../.agents/notes/proposed/architecture/2026-09-01-capability-owned-model-call-audits.md) owns the exception requirements.
 
 ## Capability seams
 

@@ -6,6 +6,8 @@
 
 可选配套入口 `@deepseek-ai/dsh-session/invariant` 将此包的关系轨迹检查注册到 `ctx.invariants`：序号单调递增、轮次／步骤闭合，以及同一步骤内的工具调用／结果配对。加载或重新加载时，它会回放现有会话；存储校验、快照、冻结、被引用的源事件校验和 surface 准入仍始终由根会话包负责。
 
+`session/retained` 将非对话审计记录保留在会话列表中，避免空会话复用；它不创建 Worker 轮次，不进入模型历史，也不授予执行权限。
+
 ## 服务：`SessionStore`（ctx 键：`sessions`）
 
 创建并持有事件溯源的 `Session` 实例。这里有意不实现持久化：插件订阅 `session/event`，在 `session/flush` 时刷新，并可镜像成对的 `session/created`／`session/disposed` 生命周期。
@@ -33,6 +35,8 @@
 会话存储会将已通知的创建与释放配对，在提交后发布追加通知并逐个监听器收容失败，同时提供受等待的持久性检查点。确切签名和作用域行为见 [session.md](../../../docs/subsystems/session.md#cordis-surface) 的生成区块；载荷见[持久化目录](../../../docs/persistence-catalog.md)。
 
 ### 类：`Session`
+
+非 surface 观察记录可以向 `append` 传入 `{ ignorable: true }`；未加载该事件扩展的读取方可以保留事件信封，而不将其作为模型输入。产生消息的事件仍需提供 surface intent。
 
 普通类（不是 Cordis 服务）。活跃会话通过 `ctx.sessions.create()` 创建，脱离态的回放或检查会话通过 `Session.create()` 创建；脱离态工厂不会发布生命周期事件，也不会将会话绑定到 fiber。
 

@@ -49,6 +49,7 @@ dsh --profile web --dump-config
 | [`core/agent-loop`](subsystems/core.md) | 实现该接口的默认驱动器 | `ctx.agentLoop` |
 | [`core/scope`](subsystems/scope.md) | 按 agent 划分作用域的注册原语 | 库，无 ctx 键 |
 | [`llm/llm`](subsystems/llm-streaming.md) | 消息与流式词汇表，以及适配器 seam | `ctx.llm` |
+| [`memory`](subsystems/memory.md) | Profile 级长期记忆、不可变 generation、召回和后台归并 | `ctx.memory` |
 
 <a id="events"></a>
 
@@ -76,28 +77,33 @@ turn/start
      reject, or a first enter rewritten empty -> close the turn with no step
      step/start
      append entered messages as user/message
+     agent/request-starting
      derive model history from the log
-     agent/request -> llm/stream -> assistant/chunk* -> assistant/message
-     tool/call* -> tools/pre-execute -> tools/execute -> tools/post-execute -> tool/result*
+     agent/request -> llm/stream
+       live: assistant/chunk* -> assistant/message
+       deferred: private durable chunks -> agent/final-candidate -> guarded assistant/message
+     tool/call* -> tools/pre-execute -> tools/execute -> tools/dispatch-ready -> body -> tools/post-execute -> tool/result*
      step/end
      tools owe another request, or next-step input arrived -> claim -> next step
   -> agent/turn-stopping
 turn/end
 ```
 
-`turn/*`、`step/*`、`user/message`、`assistant/*` 和 `tool/*` 是持久会话事件；其余是分属三个事件域的实时扩展点。`agent/pre-step`、`agent/request`、`llm/stream` 和三个 `tools/*` 事件是 waterfall（瀑布式事件），其监听器必须调用 `next()` 才能委托下去；`agent/turn-stopping` 是 serial 事件，没有 `next()`。
+`turn/*`、`step/*`、`user/message`、`assistant/*` 和 `tool/*` 是持久会话事件；其余是分属三个事件域的实时扩展点。`agent/request-starting` 是每次请求尝试都会同步发出的 broadcast，重试也包括在内。`agent/pre-step`、`agent/request`、`agent/assistant-delivery`、`agent/final-candidate`、`llm/stream` 和四个 `tools/*` 事件是 waterfall（瀑布式事件）；监听器需要调用 `next()` 才能委托，除非它负责返回该结果。`agent/turn-stopping` 是 serial 事件，没有 `next()`。`tools/dispatch-ready` 在派发包装器之后执行，随后在工具本体启动前同步复查取消信号和 guard。
 
 输入通过同一个 inbox 到达驱动器。有些消息会立即唤醒它；注入的上下文会留在 inbox 中，直到另一条消息将其唤醒。
 
 `agent/pre-step` 决定模型看到什么。监听器可以改写已领取的消息，也可以直接拒绝它们；首次领取被拒绝或被改写为空时，仍会关闭一个不含步骤的持久轮次，因此日志会记录这次尝试。每个步骤读取插件注册的提示词片段和工具 schema。
 
+普通交付仍然是 live。显式启用的插件可以通过 `agent/assistant-delivery` 提供持久 staging writer。工具调用响应在 staging 后提交，以便继续执行；最终文本 Candidate 会进入 `agent/final-candidate`，其中的同步 validator 会在普通 Assistant Message append 前立即执行。[实验性 Task Contract 与 Final Gate](subsystems/task-contract-final-gate.md)使用这条路径阻止陈旧或不完整的最终回答，同时不把 rejected draft 放进模型历史。
+
 详情见[时序图](agent-lifecycle.md)、[工具流水线](tool-execution-pipeline.md)和[取消与错误恢复](subsystems/core.md#the-agent-handle)。
 
 ## 会话日志
 
-会话日志是模型所见上下文的来源。`deriveMessages()` 从中投影出模型历史，原始 `assistant/chunk` 事件则保证回放和 UI 保真。fork、恢复、transcript（文本记录）、遥测和持久化都派生自该事件流。
+会话日志是交互式模型请求所见上下文的来源。`deriveMessages()` 从中投影出模型历史，原始 `assistant/chunk` 事件则保证回放和 UI 保真。fork、恢复、transcript（文本记录）、遥测和持久化都派生自该事件流。
 
-**模型可见即已记录。** 抵达模型请求的一切都必须能从日志重建，并由一项运行时不变量断言这一点。因此，新增一项模型可见输入就需要新增一个会话事件：扩展 `SessionEventMap` 并从日志渲染。
+**每个模型请求在分派前都可持久重建。** 交互式请求从会话日志重建，因此新增交互式模型可见输入需要新增 `SessionEventMap` 事件。经明确批准、由 capability 拥有的一次性调用可以改为在私有 audit store 中持久化准确的冻结请求和观察结果；只有结果持久化后，才能提交由它派生的状态转换。带工具的 Agent 式维护仍使用私有 Session，使其 prompt、工具调用、工具结果和最终回复均可重建。[请求重建决策](../.agents/notes/implemented/architecture/2026-07-05-reconstructable-requests.md)规定通用规则，[capability 私有 audit 决策](../.agents/notes/proposed/architecture/2026-09-01-capability-owned-model-call-audits.md)规定例外条件。
 
 ## 能力 seam
 

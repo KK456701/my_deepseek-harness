@@ -133,7 +133,7 @@ function persistedChild(
   }))
   const child = ctx.sessions.create(childId, {
     seed,
-    meta: { parentSession: rootId, seedLength: 0, origin: 'subagent' },
+    meta: { parentSession: rootId, seedLength: 0, purpose: 'subagent' },
   })
   child.append('agent/inbox/spliced', {
     target: 'next-turn',

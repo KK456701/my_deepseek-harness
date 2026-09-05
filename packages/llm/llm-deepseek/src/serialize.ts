@@ -312,6 +312,8 @@ function requestWithMessages(
     },
   }))
   const resolvedThinking = resolveThinking(options, defaults)
+  const jsonReview = (options.purpose === 'final-candidate-review' || options.purpose === 'final-shadow-review')
+    && (tools === undefined || tools.length === 0)
   return {
     model: options.model,
     messages,
@@ -322,6 +324,7 @@ function requestWithMessages(
       ? { reasoning_effort: resolvedThinking.reasoningEffort }
       : {},
     ...tools !== undefined && tools.length > 0 ? { tools } : {},
+    ...jsonReview ? { response_format: { type: 'json_object' as const } } : {},
     ...options.temperature !== undefined ? { temperature: options.temperature } : {},
     ...options.maxTokens === undefined ? {} : { max_tokens: options.maxTokens },
     ...options.stop !== undefined ? { stop: options.stop } : {},

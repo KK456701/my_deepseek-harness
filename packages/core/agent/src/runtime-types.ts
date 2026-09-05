@@ -7,7 +7,14 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Scoped } from '@deepseek-ai/dsh-scope'
-import type { LlmCallConfig, LlmFailure, ResolvedRetryPolicy } from '@deepseek-ai/dsh-llm'
+import type {
+  AssistantMessage,
+  LlmCallConfig,
+  LlmFailure,
+  ResolvedRetryPolicy,
+  StreamChunk,
+  TokenUsage,
+} from '@deepseek-ai/dsh-llm'
 import type { AgentCancelCause, Session, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 export type { AgentCancelCause } from '@deepseek-ai/dsh-session'
 import type { Inbox } from './inbox.ts'
@@ -56,6 +63,38 @@ export type PreStepDecision =
 
 /** Action returned by a listener that owns model-request recovery. */
 export type RequestErrorAction = { kind: 'retry' } | undefined
+
+/** Provider finish state exposed to a deferred assistant-output owner. */
+export type AssistantCandidateFinish = 'completed' | 'max-tokens'
+
+/**
+ * Durable writer supplied by an assistant-delivery policy that withholds the
+ * ordinary transcript until a complete candidate is accepted.
+ */
+export interface AssistantStagingWriter {
+  /** Accept one provider chunk and return any durable staged event sequences emitted for it. */
+  append(chunk: StreamChunk): readonly number[]
+  /** Persist the assembled candidate and return every event seq that produced it. */
+  complete(
+    message: AssistantMessage,
+    usage: TokenUsage | undefined,
+    finish: AssistantCandidateFinish,
+  ): readonly number[]
+  /** Record publication when a staged response contains executable tool calls and bypasses final-answer review. */
+  committed?(): void
+  /** Persist terminal interruption of an incomplete candidate. */
+  abort(reason: unknown): void
+}
+
+/** Whether one model response is published live or written through a durable staging owner. */
+export type AssistantDeliveryDecision =
+  | { kind: 'live' }
+  | { kind: 'deferred'; writer: AssistantStagingWriter }
+
+/** Decision made after a deferred final candidate is complete but before it enters model history. */
+export type FinalCandidateDecision =
+  | { kind: 'commit'; validate?: () => boolean; committed?: () => void }
+  | { kind: 'continue' }
 
 /** Why a session lifecycle began; seeded creates are `startup`, while persisted loads are `resume`. */
 export type SessionStartSource = 'startup' | 'resume' | 'clear' | 'compact'
@@ -258,6 +297,47 @@ declare module '@deepseek-ai/cordis' {
      * @mode waterfall
      */
     'agent/request-error'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; provider: string; failure: LlmFailure; retryPolicy: ResolvedRetryPolicy | undefined; signal: AbortSignal }, next: () => Promise<RequestErrorAction>): Promise<RequestErrorAction>
+    /**
+     * Mark the synchronous start of one model-request attempt after the Step's
+     * durable inputs are committed and before request assembly begins. A retry
+     * emits this event again for the replacement attempt.
+     * @param payload.agent - the agent starting the request attempt.
+     * @param payload.turn - the open turn number.
+     * @param payload.step - the open step number.
+     * @param payload.signal - the current turn's cancellation signal.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+     * @mode emit
+     */
+    'agent/request-starting'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; signal: AbortSignal }): void
+    /**
+     * Select live publication or a caller-owned durable writer before the
+     * provider stream starts. The default preserves ordinary chunk streaming.
+     * @param payload.agent - the agent making the model call.
+     * @param payload.turn - the open turn number.
+     * @param payload.step - the open step number.
+     * @param payload.signal - the current turn's cancellation signal.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+     * @mode waterfall
+     */
+    'agent/assistant-delivery'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; signal: AbortSignal }, next: () => Promise<AssistantDeliveryDecision>): Promise<AssistantDeliveryDecision>
+    /**
+     * Decide whether a deferred response without tool calls may enter the
+     * transcript. A commit validator runs synchronously immediately before the
+     * ordinary assistant event append. Its optional `committed` callback runs
+     * synchronously after that append; `continue` requires pending next-step
+     * input supplied by the listener.
+     * @param payload.agent - the agent that produced the candidate.
+     * @param payload.turn - the open turn number.
+     * @param payload.step - the open step number.
+     * @param payload.message - complete staged assistant message.
+     * @param payload.usage - provider usage attached to the candidate, when present.
+     * @param payload.finish - normal completion or the provider output cap.
+     * @param payload.sourceEventSeqs - durable staging events that produced the candidate.
+     * @param payload.signal - the current turn's cancellation signal.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+     * @mode waterfall
+     */
+    'agent/final-candidate'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; message: AssistantMessage; usage: TokenUsage | undefined; finish: AssistantCandidateFinish; sourceEventSeqs: readonly number[]; signal: AbortSignal }, next: () => Promise<FinalCandidateDecision>): Promise<FinalCandidateDecision>
     /**
      * The turn is about to close: the model owes no response (no live tool
      * calls, no fresh steering). Awaited before the boundary commits — a

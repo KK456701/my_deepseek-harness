@@ -22,7 +22,7 @@ import { TestSessionQueryEngine } from './test-service.ts'
 const id = SessionId('session')
 
 function header(value: string, extra: Partial<SessionHeader> = {}): SessionHeader {
-  return { version: SESSION_FORMAT_VERSION, id: SessionId(value), createdAt: 10, ...extra }
+  return { version: SESSION_FORMAT_VERSION, id: SessionId(value), createdAt: 10, purpose: 'interactive', ...extra }
 }
 
 function expectCode(code: SessionQueryErrorCode): Error {

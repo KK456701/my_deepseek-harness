@@ -41,6 +41,7 @@ const KIND_LABEL: Record<TrajectoryCellKind, string> = {
   context: 'CONTEXT',
   compacted: 'COMPACTED',
   message: 'ASSISTANT',
+  model: 'MODEL',
   tool: 'TOOL',
   subtool: 'SUBTOOL',
 }
@@ -112,6 +113,7 @@ const KIND_ICON: Record<TrajectoryCellKind, ReactNode> = {
   context: <InformationIcon />,
   compacted: <CompactedIcon />,
   message: <IconSparkle16 size={13} />,
+  model: <IconSparkle16 size={13} />,
   tool: <ToolWrenchIcon />,
   subtool: <ToolWrenchIcon />,
 }
@@ -153,6 +155,7 @@ function useStableVirtualRowStructure(
 }
 
 type DetailTab =
+  | `extension:${string}`
   | 'system-prompt'
   | 'tools'
   | 'overview'
@@ -665,6 +668,7 @@ function collapseAssistantRecords(
 }
 
 function stateOf(record: TableRecord): RecordState {
+  if (record.cell.operationState !== undefined) return record.cell.operationState
   if (record.cell.isError) return 'error'
   if (record.cell.kind === 'compacted' && record.cell.timeSeconds === null) return 'running'
   if (
@@ -892,6 +896,7 @@ function markdownSource(record: TableRecord): string | undefined {
 }
 
 function detailTabs(record: TableRecord): readonly DetailTabItem[] {
+  if (record.cell.detailSections) return record.cell.detailSections.map(section => ({ id: `extension:${section.id}` as const, label: section.label }))
   if (record.cell.kind === 'system') {
     return record.cell.previousPromptDetail === undefined
       ? SYSTEM_PROMPT_TABS
@@ -2693,6 +2698,13 @@ export function TrajectoryTable({
             role="tabpanel"
             aria-labelledby={`trajectory-detail-${activeTab}`}
           >
+            {selected?.cell.detailSections?.filter(section => activeTab === `extension:${section.id}`).map(section => (
+              <div key={section.id} className={css.summaryScrollRegion} data-auxiliary-detail={section.id}>
+                {section.format === 'markdown'
+                  ? <MarkdownText text={section.content} />
+                  : <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{section.content}</pre>}
+              </div>
+            ))}
             {selectedRequest !== null
               && selectedRequestState !== undefined
               && activeTab === 'overview' && (

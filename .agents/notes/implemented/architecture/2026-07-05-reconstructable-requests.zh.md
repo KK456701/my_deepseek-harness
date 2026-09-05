@@ -1,4 +1,4 @@
-# Agent Note: 每个 LLM 请求都可从会话日志重建
+# Agent Note: 每个 LLM 请求都可持久重建
 
 Status: implemented
 
@@ -14,7 +14,9 @@ Status: implemented
 
 ### 原则
 
-**模型可见 ⟺ 已持久引用。** 凡到达模型请求的内容都必须能从会话日志及其引用的不可变内容寻址对象中重建。可检查的推论：任何人持有日志、日志引用的附件对象和固定代码版本，即可逐字节重建循环的每个请求。纯文本 `GenerateOptions` 仍是日志的纯函数；含图片请求还会在适配器序列化期间通过 `ctx.attachments` 解析 `ImageAttachmentRef` 字节，其中对内容摘要及已记录元数据的校验使对象查找具有确定性，并在数据缺失或损坏时明确失败。直接的一次性调用（压缩的 summarize 调用）记录其信封标量（`compaction/summary.{provider, model, maxTokens}`），其输入是对日志区域及这些引用对象的确定性代码运算——由于只有循环会标记请求归属，因此它们不在不变式内。
+**模型可见 ⟺ 已持久引用。** 凡到达模型请求的内容都必须在网络分派前拥有持久重建记录。交互式循环请求从会话日志及其引用的不可变内容寻址对象中重建。可检查的推论：任何人持有日志、日志引用的附件对象和固定代码版本，即可逐字节重建循环的每个请求。纯文本 `GenerateOptions` 仍是日志的纯函数；含图片请求还会在适配器序列化期间通过 `ctx.attachments` 解析 `ImageAttachmentRef` 字节，其中对内容摘要及已记录元数据的校验使对象查找具有确定性，并在数据缺失或损坏时明确失败。
+
+经明确批准、由 capability 拥有的一次性调用可以使用自己的持久私有 audit，而不必创建交互式 Session。该 capability 在分派前持久化准确的冻结请求、解析后的 adapter 默认值、输入 fingerprint 和 audit 格式版本；在应用派生状态前持久化完整观察结果或有界 overflow 终止记录；恢复时拒绝不兼容的 audit 版本。带工具的 Agent 式维护使用私有 Session，因为其 prompt、工具调用、工具结果和最终回复共同构成交互记录。[capability 私有 audit 决策](../../proposed/architecture/2026-09-01-capability-owned-model-call-audits.zh.md)规定批准和恢复要求。压缩的 summarize 调用仍是对已记录区域的确定性运算，并记录其信封标量（`compaction/summary.{provider, model, maxTokens}`）。直接调用仍不属于循环不变式，因为只有循环会标记请求归属。
 
 前缀缓存稳定性是推论 #1，而非标题：一个仅追加的日志经逐节点纯函数投影，在 header 不变时自然产出前一请求的追加扩展——稳定性是涌现的，不是管理出来的。字节精确的审计/回放是推论 #2；带*可归因*漂移的恢复与 fork 是推论 #3。
 
@@ -46,7 +48,7 @@ Status: implemented
 
 ## 后果
 
-- 一个日志无法解释的请求不可能被意外构造——无论是循环还是监听器；变异已构建的请求会抛异常；每个 header 变更都是持久的、可 diff 的日志事件。
+- 一个日志无法解释的交互式请求不可能被意外构造——无论是循环还是监听器；变异已构建的请求会抛异常；每个 header 变更都是持久的、可 diff 的日志事件。经批准、由 capability 拥有的一次性调用不能在 audit request 持久化前分派，也不能在 audit result 持久化前应用结果。
 - 模型可见上下文使用已记录消息通道。`agent.inject()` 与工具 `additionalContexts` 进入 inbox，等待后续领取；必须与当前已领取批次一起结算的上下文由 `agent/pre-step` 返回。每个进入步骤的值都是带来源的持久 `user/message`，只付出一次代价并在后续成为可缓存前缀，代价是会在历史中累积直至压缩。
 - 在提供方处仍需全价计算的内容是固有的且已记录的：压缩（其 `compaction/*` 事件和替换条目）、真正的提示词、工具或配置变更（reason 为 `change` 的 `request/header`），或带漂移的进程边界（不同的 `resume` 快照）。提供方自身的 reasoning-content 排除由服务端管理。
 - `agent/pre-step` 是当前请求的消息通道；直接修改 inbox 则是最终进入后续请求的通道。

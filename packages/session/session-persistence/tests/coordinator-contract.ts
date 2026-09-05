@@ -1329,7 +1329,7 @@ export function runCoordinatorContract(name: string, makeFixture: () => Promise<
       const fix = await makeFixture()
       const { ctx, fiber } = await freshCtx(fix)
       try {
-        const m = { version: 99, id: SessionId('v99'), createdAt: 1, cwd: WORK }
+        const m = { version: 99, id: SessionId('v99'), createdAt: 1, purpose: 'interactive' as const, cwd: WORK }
         await ctx.sessionPersistence.create(m)
         await ctx.sessionPersistence.append(m.id, oneTurnLog())
         const failure = await ctx.sessionPersistence.load(m.id).then(() => undefined, (error: unknown) => error as Error)
@@ -1345,7 +1345,7 @@ export function runCoordinatorContract(name: string, makeFixture: () => Promise<
       const fix = await makeFixture()
       const { ctx, fiber } = await freshCtx(fix)
       try {
-        const m = { version: -1, id: SessionId('v-older'), createdAt: 1, cwd: WORK }
+        const m = { version: -1, id: SessionId('v-older'), createdAt: 1, purpose: 'interactive' as const, cwd: WORK }
         await ctx.sessionPersistence.create(m)
         await ctx.sessionPersistence.append(m.id, oneTurnLog())
         const failure = await ctx.sessionPersistence.load(m.id).then(() => undefined, (error: unknown) => error as Error)
@@ -1389,7 +1389,7 @@ export function runCoordinatorContract(name: string, makeFixture: () => Promise<
       const fix = await makeFixture()
       const { ctx, fiber } = await freshCtx(fix)
       try {
-        const m = { version: SESSION_FORMAT_VERSION, id: SessionId('forked-child'), createdAt: 1, cwd: WORK, parentSession: SessionId('the-parent') }
+        const m = { version: SESSION_FORMAT_VERSION, id: SessionId('forked-child'), createdAt: 1, purpose: 'interactive' as const, cwd: WORK, parentSession: SessionId('the-parent') }
         await ctx.sessionPersistence.create(m)
         await ctx.sessionPersistence.append(m.id, oneTurnLog())
         const loaded = await ctx.sessionPersistence.load(m.id)

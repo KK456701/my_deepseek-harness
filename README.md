@@ -1,59 +1,67 @@
-# DeepSeek Harness
+# DSH 智能体增强系统
 
-English | [中文](README.zh.md)
+[中文文档](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+## 项目简介
 
-It uses an architecture where **everything is a plugin**, and is powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper).
+基于开源 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 二次开发，面向跨会话长期记忆与复杂长任务执行。保留上游基于 Cordis 的插件化架构，增加 Memory Pipeline 和多需求长任务可靠性机制。
 
-## Developer preview
+当前为个人开发快照，不是稳定发布版本，仍有文档同步问题。长任务审查默认采用 Shadow（仅观察）模式，Enforce（执行拦截）需要显式配置。
 
-DeepSeek Harness is currently in _developer preview_ and is iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+## 长期记忆：Memory Pipeline
 
-## Run
+- **提取与归并**：异步处理历史会话，提取用户偏好、纠正反馈和验证证据，归并跨会话记忆并保留未决冲突。
+- **分层读取**：请求组装时注入记忆摘要，通过 `memory_search`、`memory_read` 按需查找详细记忆。
+- **经验复用**：将重复且经过验证的流程整理为可复用 Skill。
+- **可视化管理**：在界面中查看、编辑、删除记忆，并分别控制读取与贡献。
 
-### Run from `npm`
+实现说明见[长期记忆架构](docs/subsystems/memory.zh.md)，启用方式见[记忆配置](packages/memory/memory-bundle/README.zh.md)。
 
-Install `Node.js`, then run:
+## 多需求长任务可靠性
 
-```sh
-npx @deepseek-ai/dsh web
-```
+| 节点 | 职责 |
+| --- | --- |
+| 需求解析 Parser | 解析初始要求及中途新增、修改和取消，维护版本化需求账本；上下文压缩后重新注入当前任务快照。 |
+| 进度观察 Observer | 在重复调用、连续失败或执行时间窗口触发时按需核查证据，识别空转、跑偏与关键假设风险，推动主 Agent 重新规划。 |
+| 交付复核 Reviewer | 正式答复提交前交叉核对有效需求、回答内容和产物证据，将缺口分流为回答改写、只读核验或补做。 |
 
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
+执行控制由程序负责：处理插话屏障、证据失效、重复调用拦截与补救预算，复用原有沙箱和审批机制。模型判断不构成任务完整性保证。
 
-### Run from source
+设计说明见[长任务可靠性架构](docs/subsystems/task-contract-final-gate.zh.md)，装配方式见[审查插件配置](packages/experimental/task-review-bundle/README.zh.md)。
 
-To run from a repository checkout:
+<a id="run"></a>
+<a id="run-from-source"></a>
 
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
+## 从源码运行
+
+准备 Node.js 24 或更高版本，以及项目声明的 pnpm 版本。运行：
+
+```powershell
+git clone https://github.com/KK456701/my_deepseek-harness.git
+cd my_deepseek-harness
 pnpm install
 pnpm run build
 pnpm dsh web
 ```
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
+`pnpm run build` 准备运行产物，`pnpm dsh web` 使用构建后的产物启动界面。模型提供方与凭据配置参见 [Web 使用指南](docs/user/guide/index.zh.md)。本仓库的增强代码不等同于 npm 上的官方发行包。
 
-## Community and support
+长期记忆与长任务审查分别配置；包含对应代码并不代表所有功能已默认启用。启用前请阅读各自的配置与限制说明。
 
-- Feel free to submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord community</a>.
+## 中文文档导航
 
-## Contributing
+- [Web 使用指南](docs/user/guide/index.zh.md)
+- [长期记忆架构](docs/subsystems/memory.zh.md)
+- [记忆配置](packages/memory/memory-bundle/README.zh.md)
+- [长任务可靠性架构](docs/subsystems/task-contract-final-gate.zh.md)
+- [审查插件配置](packages/experimental/task-review-bundle/README.zh.md)
+- [整体架构](docs/architecture.zh.md)
+- [开发指南](docs/development.zh.md)
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+## 数据与开发状态
 
-## Development
+仓库包含功能源码、必要测试和使用说明，不包含个人凭据、私人会话日志、记忆数据库或内部评测材料。开发快照保留已知检查问题，不作为生产可用性承诺。
 
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
+## 上游与许可证
 
-For agents, follow [AGENTS.md](AGENTS.md).
-
-## License
-
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+本项目基于 DeepSeek AI 开发的 DeepSeek Harness，底层插件架构由 [Cordis](https://github.com/cordiverse/cordis) 支持。保留上游历史、归属说明与 [MIT 许可证](LICENSE)；第三方依赖及许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

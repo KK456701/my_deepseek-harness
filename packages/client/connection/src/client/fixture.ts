@@ -1525,9 +1525,9 @@ export function createFixtureFaces(options: FixtureOptions = {}): FixtureWorld {
 function createFixtureWorld(options: FixtureOptions): FixtureWorld {
   // The resident fixture sessions all carry history, so none of them is blank.
   const sessions: SessionSummary[] = options.empty ? [] : [
-    { sessionId: sid('fx-alpha'), updatedAt: Date.now(), running: true, blank: false, cwd: '/tmp/fixture' },
-    { sessionId: sid('fx-beta'), updatedAt: Date.now() - 60_000, running: false, blank: false, parentSessionId: sid('fx-alpha'), cwd: '/tmp/fixture' },
-    { sessionId: sid('fx-gamma'), updatedAt: Date.now() - 120_000, running: false, blank: false, cwd: '/tmp/fixture' },
+    { sessionId: sid('fx-alpha'), updatedAt: Date.now(), running: true, blank: false, purpose: 'interactive', cwd: '/tmp/fixture' },
+    { sessionId: sid('fx-beta'), updatedAt: Date.now() - 60_000, running: false, blank: false, purpose: 'interactive', parentSessionId: sid('fx-alpha'), cwd: '/tmp/fixture' },
+    { sessionId: sid('fx-gamma'), updatedAt: Date.now() - 120_000, running: false, blank: false, purpose: 'interactive', cwd: '/tmp/fixture' },
   ]
   const logs = new Map<SessionId, SessionEvent[]>([[sid('fx-alpha'), buildAlphaLog()]])
   const modelSelections = new Map<SessionId, ModelSelection>(sessions.map(session => [
@@ -2351,14 +2351,14 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           }
         }
         const created: SessionSummary = {
-          sessionId: requestedId ?? sid(`fx-${nextSession++}`), updatedAt: Date.now(), running: false, blank: true, cwd,
+          sessionId: requestedId ?? sid(`fx-${nextSession++}`), updatedAt: Date.now(), running: false, blank: true, purpose: 'interactive', cwd,
         }
         sessions.push(created)
         modelSelections.set(created.sessionId, { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
         attachedSessions += 1
         const emitSession = (): void => {
           // Mirrors the host: the frame fires at creation, so blank is constantly true.
-          emitHost({ type: 'host/session-added', sessionId: created.sessionId, blank: true, cwd })
+          emitHost({ type: 'host/session-added', sessionId: created.sessionId, blank: true, purpose: 'interactive', cwd })
         }
         if (workspace !== undefined && options.failWorkspaceAttach) {
           emitSession()
@@ -2427,6 +2427,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         while (cut < log.length && log[cut]?.type !== 'turn/start') cut++
         const child: SessionSummary = {
           sessionId: sid(`fx-${nextSession++}`), updatedAt: Date.now(), running: false, blank: false,
+          purpose: 'interactive',
           parentSessionId: sessionId,
           ...source.cwd === undefined ? {} : { cwd: source.cwd },
         }
@@ -2434,6 +2435,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         sessions.push(child)
         emitHost({
           type: 'host/session-added', sessionId: child.sessionId, blank: false,
+          purpose: 'interactive',
           parentSessionId: sessionId,
           ...source.cwd === undefined ? {} : { cwd: source.cwd },
         })
@@ -3055,6 +3057,11 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
       discoverModels: request => ok(request, {
         models: fixtureModelGroups().flatMap(group => group.models.map(model => ({ id: model.id, name: model.name }))),
       }),
+      // The fixture holds no account state; a balance line with the deployed
+      // currency exercises the strip without a live provider.
+      balance: request => ok(request, {
+        balances: [{ currency: 'CNY', total: '110.00', granted: '10.00', toppedUp: '100.00' }],
+      }),
     },
     respond(message: ClientResponse): Promise<RpcReceipt> {
       // Same routing discipline as the host: rpcId first, then the payload's
@@ -3227,6 +3234,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'llm.providers': return this.api.llm.providers(request)
       case 'llm.models': return this.api.llm.models(request)
       case 'llm.discoverModels': return this.api.llm.discoverModels(request, signal)
+      case 'llm.balance': return this.api.llm.balance(request, signal)
     }
   }
 

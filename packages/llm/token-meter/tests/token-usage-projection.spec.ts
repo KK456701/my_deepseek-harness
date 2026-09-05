@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
-import SessionStore from '@deepseek-ai/dsh-session'
+import SessionStore, { AuditedLlmCallId } from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
@@ -93,6 +93,28 @@ function appendSummaryMeter(ctx: Context, session: Session, start: number, end: 
 }
 
 describe('tokenUsage session projection', () => {
+  it('adds capability-owned audited model usage without replacing the interactive step sample', async () => {
+    const { ctx, session } = await harness()
+    startStep(session, 1, 1)
+    const source = usageChunk(session, { inputTokens: 10, outputTokens: 4 }, 1, 1)
+    finalUsage(session, { inputTokens: 10, outputTokens: 4 }, 1, 1, [source])
+    session.append('llm/audited-call', {
+      callId: AuditedLlmCallId('review-1'),
+      purpose: 'final-shadow-review',
+      provider: 'mock',
+      model: 'reviewer',
+      durationMs: 20,
+      usage: { inputTokens: 6, outputTokens: 2, cacheReadTokens: 3 },
+    })
+
+    expect(projected(ctx, session)).toEqual({
+      uncachedInputTokens: 16,
+      outputTokens: 6,
+      cacheReadTokens: 3,
+      cacheWriteTokens: 0,
+    })
+  })
+
   it('serves zero buckets for an empty log', async () => {
     const { ctx, session } = await harness()
     expect(projected(ctx, session)).toEqual(ZERO)

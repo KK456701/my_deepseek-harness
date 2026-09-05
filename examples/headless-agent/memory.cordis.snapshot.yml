@@ -1,0 +1,46 @@
+# Keyless real-Loader composition for long-term-memory prompt injection. The
+# seed plugin publishes one immutable generation through the real local store;
+# the ordinary agent request then acquires and logs that generation's summary.
+
+- id: persistence
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: './.sessions'
+    compression: none
+
+- id: replay
+  name: '@deepseek-ai/dsh-llm-replay'
+  config:
+    file: !!js process.env.DSH_SNAPSHOT_FILE
+    overrideFile: !!js process.env.DSH_SNAPSHOT_OVERRIDE
+
+- id: memory-local
+  name: '../../packages/memory/memory-local/src/index.ts'
+  config:
+    root: !!js process.cwd() + '/memories'
+    enabled: true
+    useByDefault: true
+    contributeByDefault: true
+
+- id: memory-seed
+  name: './tests/fixtures/memory-seed.ts'
+
+- id: agent
+  name: '@deepseek-ai/dsh-agent-spine-demo'
+  config:
+    agents:
+      - id: main
+        provider: memory-snapshot
+        model: memory-snapshot
+        cwd: !!js process.cwd()
+    workspaceContext: false
+    skills:
+      enabled: false
+    toolBash: false
+    toolJobs: false
+    goals: false
+
+- id: memory-prompt
+  name: '../../packages/memory/memory-prompt/src/index.ts'
+  config:
+    maxSummaryBytes: 4096

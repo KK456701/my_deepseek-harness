@@ -11,6 +11,7 @@ import { registerTrajectoryMessageDefinitions } from '../src/client/trajectory-m
 import { registerTrajectoryRequestHeaderDefinition } from '../src/client/trajectory-request-header-definition.ts'
 import { trajectoryViewDefinition } from '../src/client/trajectory-snapshot-builder.ts'
 import { registerTrajectoryToolDefinition } from '../src/client/trajectory-tool-definition.ts'
+import { registerTrajectoryMemoryDefinition } from '../src/client/trajectory-memory-definition.ts'
 
 const DEFINITIONS: ConversationNodeDefinition[] = []
 const registrationContext = {
@@ -27,6 +28,7 @@ registerTrajectoryRequestHeaderDefinition(registrationContext)
 registerTrajectoryAssistantDefinition(registrationContext)
 registerTrajectoryToolDefinition(registrationContext)
 registerTrajectoryCompactionDefinitions(registrationContext)
+registerTrajectoryMemoryDefinition(registrationContext)
 
 class TestEventDefinitions {
   entries(): readonly ConversationNodeDefinition[] {
@@ -88,6 +90,11 @@ function assistantMessage(id: string, text: string) {
 }
 
 describe('Trajectory conversation Definitions', () => {
+  it('projects memory observations without creating a tool node or copying the summary', () => {
+    const context = { turn: 1, step: 1, headerSeq: 2, selection: { kind: 'skipped', reason: 'session-denied' } }
+    const value = assembler([at(1, 'step/start', { turn: 1, step: 1 }), at(3, 'memory/context', context, { ignorable: true })])
+    expect(snapshot(value).memoryContexts).toEqual([{ seq: 3, time: 1_700_000_000_003, context }])
+  })
   it('assembles streaming usage, preserves retry facts, and materializes interruption', () => {
     const value = assembler([
       at(1, 'turn/start', { turn: 1 }),

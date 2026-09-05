@@ -1,5 +1,6 @@
 /** Registers the conversation components, shared store, and service callbacks. */
 import type { Context } from '@deepseek-ai/cordis'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import { resolveSlotLabel, type BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   resolveWorkspacePath, type ISessions, type SessionId,
@@ -29,6 +30,7 @@ import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
 import type { EnterBehaviorRowInjected } from './settings/EnterBehaviorRow.tsx'
 import { ChatView } from './chat/ChatView.tsx'
 import { StatsLine } from './chat/StatsLine.tsx'
+import type { StatsLineProps } from './chat/StatsLine.tsx'
 import { ApprovalPanel } from './skeleton/ApprovalPanel.tsx'
 import { todoDockEntry } from './skeleton/TodoPanel.tsx'
 import { queueDockEntry } from './queue/QueueDock.tsx'
@@ -427,7 +429,22 @@ export function apply(ctx: Context): void {
   }, ChatView)
 
   // Session stats stick with the composer (composer.dock = stats-line family).
-  slots.register({ name: 'conversation.composer.dock', id: 'stats', order: 0, locale: NS }, StatsLine)
+  // The balance readout rides the same strip through a transport-bound resolver
+  // for the shipped DeepSeek provider namespace. A deployment without that
+  // adapter leaves the strip unchanged.
+  slots.register({
+    name: 'conversation.composer.dock',
+    id: 'stats',
+    order: 0,
+    locale: NS,
+    inject: (): Pick<StatsLineProps, 'queryBalance'> => ({
+      queryBalance: async (signal) => {
+        const connection = ctx.get('connection') as ConnectionHandle
+        const response = await connection.api.llm.balance({ settingsNs: 'llm-deepseek' }, signal)
+        return response.result.ok ? response.result.value.balances : undefined
+      },
+    }),
+  }, StatsLine)
 
   // Class-plugin mount (packages/AGENTS.md service form): the service
   // registers itself as `conversation` and lives on its own child fiber.

@@ -63,6 +63,16 @@ function compactionRequest(startSeq: number): Extract<RequestView, { purpose: 'c
 }
 
 describe('TrajectorySnapshotBuilder', () => {
+  it('marks independent calls without a terminal record as interrupted across resume', () => {
+    const builder = new TrajectorySnapshotBuilder()
+    const result = builder.replace({ nodes: [
+      contribution('call', 2, { kind: 'record', record: { seq: 2, turn: null, group: 'model', cell: {
+        kind: 'model', text: 'prepared', operationState: 'running', timeSeconds: null,
+      } } }), contribution('resume', 8, { kind: 'session-end', seq: 8, time: 100 }),
+    ] })
+    expect(result.records?.[0]?.cell.operationState).toBe('error')
+    expect(result.records?.[0]?.cell.text).toContain('结果未记录')
+  })
   it('inherits one request header across requests without repeating its prompt change', () => {
     const prompt = {
       config: { provider: 'test', model: 'test' },

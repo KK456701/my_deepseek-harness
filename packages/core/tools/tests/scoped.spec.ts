@@ -353,7 +353,7 @@ describe('scoped execution dispatch', () => {
     expect(calls).toEqual(['first', 'late'])
   })
 
-  it('defers a scoped guard that replaces the last guard in its generation', async () => {
+  it('rechecks a replacement scoped guard before the tool body starts', async () => {
     const ctx = await mount()
     const { scope, key } = await mintAgentScope(ctx, 'a')
     const calls: string[] = []
@@ -369,10 +369,10 @@ describe('scoped execution dispatch', () => {
       return undefined
     })
 
-    expect(await run(ctx, 't', key)).toBe('ran:t')
-    expect(calls).toEqual(['first'])
     expect(await run(ctx, 't', key)).toBe('Error: replacement denial')
     expect(calls).toEqual(['first', 'replacement'])
+    expect(await run(ctx, 't', key)).toBe('Error: replacement denial')
+    expect(calls).toEqual(['first', 'replacement', 'replacement'])
   })
 
   it('shares one token and materialized argument value across the pipeline', async () => {

@@ -20,6 +20,8 @@ export interface WireRequest {
   /** Thinking effort (official levels). */
   reasoning_effort?: 'low' | 'high' | 'max'
   tools?: WireTool[]
+  /** JSON-object content for tool-free final-review conclusions. */
+  response_format?: { type: 'json_object' }
   temperature?: number
   max_tokens?: number
   /**

@@ -37,6 +37,8 @@ One host registry may carry several mounts of this plugin — one per agent pres
 
 A default above the cap fails at load.
 
+`job_output` supplies runtime-only target/status metadata for repeat detection. Only successful queries of the requested running or stopping job qualify for polling; this tool never starts a new job. The policy is not part of the model tool schema.
+
 ## Model Experience
 
 ### System prompt

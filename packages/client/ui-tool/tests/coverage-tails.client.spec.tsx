@@ -26,7 +26,7 @@ function listStore() {
   return createSnapshotStore<SessionListState>({
     ids: [SID],
     byId: {
-      [SID]: { id: SID, title: 'r', displayTitle: 'r', running: false, blank: false, updatedAt: 0 },
+      [SID]: { id: SID, title: 'r', displayTitle: 'r', purpose: 'interactive', running: false, blank: false, updatedAt: 0 },
     },
     current: undefined,
     phase: 'ready',

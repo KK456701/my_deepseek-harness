@@ -18,6 +18,8 @@ const SQL_RESOURCES = [
   'journal-mode-persist',
   'journal-mode-truncate',
   'journal-mode-wal',
+  'legacy-schema-16',
+  'legacy-schema-17',
   'mmap-off',
   'rollback',
   'schema',
@@ -36,11 +38,15 @@ const SQL_RESOURCES = [
   'select-user-object-count',
   'select-user-version',
   'set-application-id',
-  'set-user-version-17',
+  'set-user-version-18',
   'synchronous-full',
   'trusted-schema-off',
   'update-session-revision',
   'upsert-session',
+  'upgrade-select-sessions',
+  'upgrade-session-revision',
+  'upgrade-store-id',
+  'upgrade-check-foreign-keys',
 ] as const
 
 /** A resource basename selected exclusively by package code. */

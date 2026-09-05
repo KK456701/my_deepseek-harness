@@ -9,7 +9,7 @@ import {
   createSnapshotStore, EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
-  ConversationSnapshot, SessionId, SessionListState, WorkspaceId, WorkspaceListState, WorkspaceView,
+  ConversationSnapshot, SessionId, SessionListState, SessionSummary, WorkspaceId, WorkspaceListState, WorkspaceView,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConversationRootProps } from '../src/client/skeleton/ConversationRoot.tsx'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
@@ -103,11 +103,10 @@ function mount(
   } = {},
 ) {
   const root = sid('root')
-  const rootRow = { id: root, displayTitle: 'Root', running: false, blank: false, updatedAt: 1 }
-  const childRow = {
-    id: SID, displayTitle: 'Child', parentId: root, cwd: '/projects/one',
+  const rootRow = { id: root, displayTitle: 'Root', purpose: 'interactive' as const, running: false, blank: false, updatedAt: 1 }
+  const childRow: SessionSummary = {
+    id: SID, displayTitle: 'Child', parentId: root, purpose: options.summaryOrigin ?? 'interactive', cwd: '/projects/one',
     running: false, blank: options.summaryBlank ?? false, updatedAt: 2,
-    ...(options.summaryOrigin === undefined ? {} : { origin: options.summaryOrigin }),
   }
   const listed = options.omitSummaryRow !== true
   const sessions = createSnapshotStore<SessionListState>({

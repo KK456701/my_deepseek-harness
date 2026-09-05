@@ -10,7 +10,7 @@ CREATE TABLE sessions (
   cwd              TEXT,
   parent_session   TEXT,
   seed_length      INTEGER,
-  origin           TEXT,
+  purpose          TEXT NOT NULL CHECK (purpose IN ('interactive', 'subagent', 'maintenance')),
   delegation_depth INTEGER,
   agent_preset     TEXT,
   incarnation      TEXT NOT NULL,

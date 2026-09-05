@@ -20,6 +20,8 @@ export type { JsonValue } from './json.ts'
 
 /** Identifies one session in the store (and its persistence artifacts). */
 export type SessionId = Branded<'SessionId'>
+/** Durable identity for one capability-owned model call outside the interactive Worker request. */
+export type AuditedLlmCallId = Branded<'AuditedLlmCallId'>
 
 /**
  * Brand a string as a {@link SessionId}.
@@ -28,6 +30,15 @@ export type SessionId = Branded<'SessionId'>
  */
 export function SessionId(id: string): SessionId {
   return id as SessionId
+}
+
+/**
+ * Brand one audited model-call identity after its owner has minted a unique value.
+ * @param id - Unique call identity minted by the owning capability.
+ * @returns The same identity with its audited-call brand.
+ */
+export function AuditedLlmCallId(id: string): AuditedLlmCallId {
+  return id as AuditedLlmCallId
 }
 
 /**
@@ -55,6 +66,9 @@ export function SessionId(id: string): SessionId {
  */
 export const SESSION_FORMAT_VERSION = 0
 
+/** Durable product role assigned to every session. */
+export type SessionPurpose = 'interactive' | 'subagent' | 'maintenance'
+
 /**
  * Immutable validated storage metadata, kept outside the conversation event log.
  */
@@ -78,11 +92,8 @@ export interface SessionHeader {
    * boundary lets resume and replay distinguish parent history from child work.
    */
   readonly seedLength?: number
-  /**
-   * Coarse product classification for a session created as a subagent child.
-   * This is presentation metadata, not proof that the child is continuable.
-   */
-  readonly origin?: 'subagent'
+  /** Product role used by lifecycle, navigation, and maintenance consumers. */
+  readonly purpose: SessionPurpose
   /**
    * Delegation depth: absent (zero) for a top-level session, parent depth + 1
    * for a subagent child. Persisted so a recursion budget survives restart and
@@ -115,7 +126,7 @@ export interface CreateSessionOptions {
     readonly parentSession?: SessionId
     readonly createdAt?: number
     readonly seedLength?: number
-    readonly origin?: 'subagent'
+    readonly purpose?: SessionPurpose
     readonly delegationDepth?: number
     readonly agentPreset?: string
   }
@@ -311,6 +322,20 @@ export interface SessionEventMap {
    * changes. It does not participate in request reconstruction or header equality.
    */
   'request/context': RequestContext
+  /**
+   * Retains an inspectable non-conversation record in session lists without
+   * inventing a Worker turn. It is not model input or execution authorization.
+   */
+  'session/retained': { reason: string }
+  /** Records usage and wall time for one audited capability-owned model call that does not produce an interactive Assistant Message. */
+  'llm/audited-call': {
+    callId: AuditedLlmCallId
+    purpose: string
+    provider: string
+    model: string
+    durationMs: number
+    usage?: TokenUsage
+  }
   /**
    * Marks the end of a constructor seed. Events before it have smaller seq
    * values and came from the seed (resume, fork, or replay); this lifecycle

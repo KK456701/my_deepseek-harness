@@ -613,7 +613,7 @@ describe('a switch survives the session', () => {
     // The exact shape a resume reads back from disk: the header says standard,
     // the log records the switch the user made while the session was blank.
     const rebuilt = resolveSessionPreset({
-      header: { version: 0, id: SessionId('x'), createdAt: 0, agentPreset: 'standard' },
+      header: { version: 0, id: SessionId('x'), createdAt: 0, purpose: 'interactive', agentPreset: 'standard' },
       events: [
         { type: 'agent-preset/selected', seq: 1, time: 0, data: { agentPreset: 'minimal' } },
         { type: 'turn/start', seq: 2, time: 0, data: { turn: 0, trigger: { kind: 'message', source: { kind: 'user' } } } },

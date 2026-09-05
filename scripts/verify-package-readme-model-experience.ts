@@ -42,6 +42,15 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/memory/memory': { kind: 'indirect', reason: 'The public definition delegates prompt and tool rendering to memory-prompt.' },
+  'packages/memory/memory-local': { kind: 'indirect', reason: 'The durable provider returns snapshots and evidence; prompt and scheduler consumers render model requests.' },
+  'packages/memory/memory-pipeline-store': { kind: 'none', reason: 'Private persistence definitions register no model prompt or tool.' },
+  'packages/memory/memory-maintenance': { kind: 'none', reason: 'Lifecycle definitions register no model prompt or tool.' },
+  'packages/memory/memory-maintenance-triggers': { kind: 'none', reason: 'The trigger bridge schedules work; the scheduler owns model requests.' },
+  'packages/memory/memory-remote': { kind: 'none', reason: 'The Remote exposes trusted management methods without contributing model context.' },
+  'packages/memory/memory-bundle': { kind: 'indirect', reason: 'The bundle assembles child plugins which own all model-facing content.' },
+  'packages/client/ui-memory': { kind: 'none', reason: 'The UI edits public service settings and requests; it contributes no model input.' },
+  'packages/subagent/codex-structured-runner': { kind: 'indirect', reason: 'The definition delegates request construction to the app-server provider and memory consumers.' },
   'packages/attachment/attachment': { kind: 'indirect', reason: 'The storage seam delegates model request rendering to provider adapters.' },
   'packages/attachment/attachment-local': { kind: 'indirect', reason: 'The local backend delegates model request rendering to provider adapters.' },
   'packages/shell/shell': { kind: 'indirect', reason: 'The service interface delegates all model rendering to dsh-tool-bash.' },

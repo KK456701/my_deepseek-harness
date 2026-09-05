@@ -186,7 +186,7 @@ function CatalogLoadingRows({
   t: TranslateNS<typeof NS>
 }) {
   const children = Object.values(summaries).filter(summary => (
-    summary.origin === 'subagent' && summary.parentId === parentSessionId
+    summary.purpose === 'subagent' && summary.parentId === parentSessionId
   ))
   if (children.length === 0) return <div className={css.notice}>{t('loading.label')}</div>
   return children.map(summary => (

@@ -37,7 +37,7 @@ async function temporaryPath(name = 'search.db'): Promise<string> {
 }
 
 function header(id: string, createdAt = 1, extra: Partial<SessionHeader> = {}): SessionHeader {
-  return { version: SESSION_FORMAT_VERSION, id: SessionId(id), createdAt, ...extra }
+  return { version: SESSION_FORMAT_VERSION, id: SessionId(id), createdAt, purpose: 'interactive', ...extra }
 }
 
 function messageEvents(text: string, time = 1): SessionEvent[] {

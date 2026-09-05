@@ -91,6 +91,7 @@ async function authorChild(
     version: SESSION_FORMAT_VERSION,
     id: sessionId,
     createdAt: 1,
+    purpose: 'interactive',
     ...header,
   })
   await ctx.sessionPersistence.append(sessionId, events)
@@ -159,7 +160,7 @@ describe('SubagentRuntime.listChildren', () => {
     ctx.sessions.create(parentId)
     const childId = SessionId('live-only-child')
     const child = ctx.sessions.create(childId, {
-      meta: { parentSession: parentId, origin: 'subagent' },
+      meta: { parentSession: parentId, purpose: 'subagent' },
     })
     child.append('turn/start', {
       turn: 1,
@@ -241,6 +242,7 @@ describe('SubagentRuntime.listChildren', () => {
       version: SESSION_FORMAT_VERSION,
       id: coldParent,
       createdAt: 1,
+      purpose: 'interactive',
     })
     await ctx.sessionPersistence.append(coldParent, [
       { type: 'turn/start', seq: 0, time: 1, data: { turn: 1, trigger: { kind: 'message', source: { kind: 'user' } } } },
@@ -248,7 +250,7 @@ describe('SubagentRuntime.listChildren', () => {
     ] as SessionEvent[])
     const childId = await authorChild(ctx, '00000000-0000-4000-8000-00000000cdcd', {
       parentSession: coldParent,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('persisted parent case')))
     const entries = await ctx.subagents.listChildren(coldParent)
     expect(entries).toEqual([
@@ -264,7 +266,7 @@ describe('SubagentRuntime.listChildren', () => {
     /** Publish one live child with a pinned header ordering key. */
     const liveChild = (parentId: SessionId, id: string, createdAt: number, label: string): SessionId => {
       const session = ctx.sessions.create(SessionId(id), {
-        meta: { parentSession: parentId, origin: 'subagent', createdAt },
+        meta: { parentSession: parentId, purpose: 'subagent', createdAt },
       })
       session.append('turn/start', { turn: 1 })
       session.append('subagent/descriptor', descriptorPayload(label))
@@ -287,7 +289,7 @@ describe('SubagentRuntime.listChildren', () => {
   it('omits a live child that has not appended its descriptor yet', async () => {
     const { ctx, parent } = await setup([])
     const pending = ctx.sessions.create(SessionId('creation-window-child'), {
-      meta: { parentSession: parent.id, origin: 'subagent' },
+      meta: { parentSession: parent.id, purpose: 'subagent' },
     })
     pending.append('turn/start', { turn: 1 })
     // The creation window: the establishing provider has not appended the
@@ -299,7 +301,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([])
     const labeled = await authorChild(ctx, '00000000-0000-4000-8000-00000000ab02', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents({
       version: SUBAGENT_DESCRIPTOR_VERSION,
       mode: 'one-shot',
@@ -321,7 +323,7 @@ describe('SubagentRuntime.listChildren', () => {
     // descriptor and the parent lineage, without starting an Activation.
     const liveId = SessionId('live-child')
     const live = ctx.sessions.create(liveId, {
-      meta: { parentSession: parent.id, origin: 'subagent' },
+      meta: { parentSession: parent.id, purpose: 'subagent' },
     })
     live.append('turn/start', { turn: 1 })
     live.append('subagent/descriptor', descriptorPayload('live child'))
@@ -349,7 +351,7 @@ describe('SubagentRuntime.listChildren', () => {
     events[4] = { ...events[4]!, seq: 4 }
     const doubled = await authorChild(ctx, '00000000-0000-4000-8000-00000000dupe', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, events)
     // The last-wins projection fold serves the final descriptor's identity; a
     // repeated descriptor is not a per-child corruption diagnostic.
@@ -368,7 +370,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([])
     const liveId = SessionId('invalidated-live-child')
     const live = ctx.sessions.create(liveId, {
-      meta: { parentSession: parent.id, origin: 'subagent' },
+      meta: { parentSession: parent.id, purpose: 'subagent' },
     })
     live.append('turn/start', { turn: 1 })
     live.append('subagent/descriptor', descriptorPayload('was valid'))
@@ -402,7 +404,7 @@ describe('SubagentRuntime.listChildren', () => {
     events[4] = { ...events[4]!, seq: 4 }
     const invalidated = await authorChild(ctx, '00000000-0000-4000-8000-00000000ad01', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, events)
     await expect(ctx.subagents.listChildren(parent.id)).resolves.toEqual([
       { kind: 'diagnostic', id: invalidated, reason: 'corrupt' },
@@ -413,7 +415,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([], { projectionCache: true })
     const child = await authorChild(ctx, '00000000-0000-4000-8000-00000000ae01', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('disk label')))
     // seq 2 >= seedLength 0: the cached identity provably comes from the
     // child's own suffix, so it is final and the log is never re-read — the
@@ -444,7 +446,7 @@ describe('SubagentRuntime.listChildren', () => {
     const forkChild = await authorChild(ctx, '00000000-0000-4000-8000-00000000ae02', {
       parentSession: parent.id,
       seedLength: seed.length,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, events)
     // A creation-window checkpoint carried the ANCESTOR identity: its seq 2
     // fails the own-suffix gate (< seedLength 4), so preparation rules.
@@ -473,7 +475,7 @@ describe('SubagentRuntime.listChildren', () => {
     const healthy = await startChild(ctx, parent, 'healthy sibling')
     const reborn = await authorChild(ctx, '00000000-0000-4000-8000-00000000ae03', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('reborn child')))
     const original = ctx.sessionPersistence.inspect.bind(ctx.sessionPersistence)
     ctx.sessionPersistence.inspect = async (sessionId, signal) => {
@@ -494,7 +496,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([], { projectionCache: true })
     const healthy = await authorChild(ctx, '00000000-0000-4000-8000-00000000ad02', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('actually valid')))
     // A stale cached sentinel must not out-rank the authoritative re-fold.
     ctx.sessionProjectionCache.cachedSnapshot = () => ({ asOfSeq: 0, values: { subagent: null } })
@@ -512,7 +514,7 @@ describe('SubagentRuntime.listChildren', () => {
     // first-party inspection rejects before any projection fold can run.
     const invalid = await authorChild(ctx, '00000000-0000-4000-8000-0000000000ee', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, [
       { type: 'turn/start', seq: 0, time: 1, data: { turn: 1, trigger: { kind: 'message', source: { kind: 'user' } } } },
       {
@@ -531,7 +533,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([])
     const malformed = await authorChild(ctx, '00000000-0000-4000-8000-0000000000ff', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents({ version: SUBAGENT_DESCRIPTOR_VERSION, mode: 'continuable', provider: 7 }))
     const entries = await ctx.subagents.listChildren(parent.id)
     expect(entries).toEqual([{ kind: 'diagnostic', id: malformed, reason: 'corrupt' }])
@@ -541,7 +543,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([])
     const future = await authorChild(ctx, '00000000-0000-4000-8000-0000000000aa', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('from the future', SUBAGENT_DESCRIPTOR_VERSION + 1)))
     // The projection fold does not distinguish an unrecognized version from
     // other invalid descriptors: both serve no identity, and a settled
@@ -558,7 +560,7 @@ describe('SubagentRuntime.listChildren', () => {
     const forkChild = await authorChild(ctx, '00000000-0000-4000-8000-0000000000f0', {
       parentSession: parent.id,
       seedLength: seed.length,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, seed)
     const entries = await ctx.subagents.listChildren(parent.id)
     expect(entries).toEqual([
@@ -573,7 +575,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([])
     const foreign = await authorChild(ctx, '00000000-0000-4000-8000-0000000000bb', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents({
       version: SUBAGENT_DESCRIPTOR_VERSION,
       mode: 'continuable',
@@ -595,7 +597,7 @@ describe('SubagentRuntime.listChildren', () => {
     const healthy = await startChild(ctx, parent, 'healthy sibling')
     const poisoned = await authorChild(ctx, '00000000-0000-4000-8000-00000000d00d', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('poison me')))
     // The subagent unit itself folds this child cleanly; the FOREIGN unit's
     // view throws, and that damage stays contained to the one child.
@@ -612,13 +614,13 @@ describe('SubagentRuntime.listChildren', () => {
     ctx.sessionProjections.register(hostileProjectionDefinition)
     const poisonedId = SessionId('live-poisoned-child')
     const poisoned = ctx.sessions.create(poisonedId, {
-      meta: { parentSession: parent.id, origin: 'subagent' },
+      meta: { parentSession: parent.id, purpose: 'subagent' },
     })
     poisoned.append('turn/start', { turn: 1 })
     poisoned.append('subagent/descriptor', descriptorPayload('poison me'))
     const healthyId = SessionId('live-healthy-child')
     const healthy = ctx.sessions.create(healthyId, {
-      meta: { parentSession: parent.id, origin: 'subagent' },
+      meta: { parentSession: parent.id, purpose: 'subagent' },
     })
     healthy.append('turn/start', { turn: 1 })
     healthy.append('subagent/descriptor', descriptorPayload('live healthy'))
@@ -644,7 +646,7 @@ describe('SubagentRuntime.listChildren', () => {
     const healthy = await startChild(ctx, parent, 'healthy sibling')
     const flaky = await authorChild(ctx, '00000000-0000-4000-8000-00000000f1a7', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('flaky storage')))
     const original = ctx.sessionPersistence.inspect.bind(ctx.sessionPersistence)
     ctx.sessionPersistence.inspect = (sessionId, signal) => {
@@ -675,7 +677,7 @@ describe('SubagentRuntime.listChildren', () => {
     const plain = await authorChild(ctx, '00000000-0000-4000-8000-00000000c0de', {
       parentSession: parent.id,
       createdAt: 1,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('twin child')))
     // The compacted twin: a compaction checkpoint replaces the whole surface,
     // while the append-only log retains the model-hidden descriptor event.
@@ -694,7 +696,7 @@ describe('SubagentRuntime.listChildren', () => {
     const compacted = await authorChild(ctx, '00000000-0000-4000-8000-00000000c1de', {
       parentSession: parent.id,
       createdAt: 2,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, compactedEvents)
     const entries = await ctx.subagents.listChildren(parent.id)
     expect(entries).toEqual([
@@ -714,7 +716,7 @@ describe('SubagentRuntime.listChildren', () => {
     const childId = await startChild(ctx, parent, 'direct child')
     const grandchildId = await authorChild(ctx, '00000000-0000-4000-8000-0000000000cc', {
       parentSession: childId,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('grandchild')))
     const inspected: SessionId[] = []
     const original = ctx.sessionPersistence.inspect.bind(ctx.sessionPersistence)
@@ -739,11 +741,11 @@ describe('SubagentRuntime.listChildren', () => {
     const coldStarted = await startChild(ctx, parent, 'cold started child')
     const coldAuthored = await authorChild(ctx, '00000000-0000-4000-8000-00000000ab01', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('cold authored child')))
     const liveId = SessionId('live-mixed-child')
     const live = ctx.sessions.create(liveId, {
-      meta: { parentSession: parent.id, origin: 'subagent' },
+      meta: { parentSession: parent.id, purpose: 'subagent' },
     })
     live.append('turn/start', { turn: 1 })
     live.append('subagent/descriptor', descriptorPayload('live mixed child'))
@@ -784,7 +786,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([], { projectionCache: true })
     const foreign = await authorChild(ctx, '00000000-0000-4000-8000-00000000ac01', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('uncached child')))
     const expected = [{
       kind: 'child', id: foreign, label: 'uncached child', mode: 'continuable',
@@ -806,7 +808,7 @@ describe('SubagentRuntime.listChildren', () => {
     expect(ctx.get('sessionProjectionCache')).toBeUndefined()
     const foreign = await authorChild(ctx, '00000000-0000-4000-8000-00000000ac02', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('uncacheable child')))
     const inspect = vi.spyOn(ctx.sessionPersistence, 'inspect')
     await expect(ctx.subagents.listChildren(parent.id)).resolves.toEqual([{
@@ -820,7 +822,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([], { projectionCache: true })
     const recovered = await authorChild(ctx, '00000000-0000-4000-8000-00000000ac03', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('recovered child')))
     ctx.sessionProjectionCache.cachedSnapshot = () => {
       // A poisoned stored row (any unit's) detonates at view time; the cache
@@ -856,7 +858,7 @@ describe('SubagentRuntime.listChildren', () => {
     const childId = await startChild(ctx, parent, 'direct child')
     const diagnosticId = await authorChild(ctx, '00000000-0000-4000-8000-0000000000f2', {
       parentSession: childId,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents({ version: SUBAGENT_DESCRIPTOR_VERSION, mode: 'continuable', provider: 7 }))
 
     await expect(ctx.subagents.listChildren(childId)).resolves.toEqual([
@@ -902,7 +904,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([])
     await authorChild(ctx, '00000000-0000-4000-8000-00000000ce11', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('cancelled cold read')))
     const controller = new AbortController()
     const entered = Promise.withResolvers<undefined>()
@@ -926,7 +928,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([])
     await authorChild(ctx, '00000000-0000-4000-8000-00000000ce12', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('cancelled mid-listing')))
     const controller = new AbortController()
     const original = ctx.sessionPersistence.inspect.bind(ctx.sessionPersistence)
@@ -945,7 +947,7 @@ describe('SubagentRuntime.listChildren', () => {
     const { ctx, parent } = await setup([])
     await authorChild(ctx, '00000000-0000-4000-8000-00000000ce13', {
       parentSession: parent.id,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('aborted behind a failure')))
     const controller = new AbortController()
     ctx.sessionPersistence.inspect = () => {
@@ -979,17 +981,17 @@ describe('SubagentRuntime.listDescendants', () => {
     const childA = await authorChild(ctx, '00000000-0000-4000-8000-00000000aaa1', {
       parentSession: parent.id,
       createdAt: 1,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('branch a')))
     const grandchild = await authorChild(ctx, '00000000-0000-4000-8000-00000000aaa2', {
       parentSession: childA,
       createdAt: 2,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('under a')))
     const childB = await authorChild(ctx, '00000000-0000-4000-8000-00000000aaa3', {
       parentSession: parent.id,
       createdAt: 3,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('branch b')))
 
     const entries = await ctx.subagents.listDescendants(parent.id)
@@ -1019,13 +1021,13 @@ describe('SubagentRuntime.listDescendants', () => {
     const { ctx, parent } = await setup([])
     const bareId = SessionId('live-creation-window')
     const bare = ctx.sessions.create(bareId, {
-      meta: { createdAt: 1, parentSession: parent.id, origin: 'subagent' },
+      meta: { createdAt: 1, parentSession: parent.id, purpose: 'subagent' },
     })
     bare.append('turn/start', { turn: 1 })
     const below = await authorChild(ctx, '00000000-0000-4000-8000-00000000aaaf', {
       parentSession: bareId,
       createdAt: 2,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('below the creation window')))
 
     await expect(ctx.subagents.listDescendants(parent.id)).resolves.toEqual([{
@@ -1045,7 +1047,7 @@ describe('SubagentRuntime.listDescendants', () => {
     await authorChild(ctx, nodeId, {
       parentSession: rootId,
       createdAt: 1,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('cycle child')))
 
     await expect(ctx.subagents.listDescendants(rootId)).resolves.toEqual([{
@@ -1067,7 +1069,7 @@ describe('SubagentRuntime.listDescendants', () => {
     }
     const leafId = SessionId('deep-subagent-leaf')
     const leaf = ctx.sessions.create(leafId, {
-      meta: { createdAt: depth, parentSession: parentId, origin: 'subagent' },
+      meta: { createdAt: depth, parentSession: parentId, purpose: 'subagent' },
     })
     leaf.append('turn/start', { turn: 1 })
     leaf.append('subagent/descriptor', descriptorPayload('deep leaf'))
@@ -1086,7 +1088,7 @@ describe('SubagentRuntime.listDescendants', () => {
     const underFork = await authorChild(ctx, '00000000-0000-4000-8000-00000000bbb1', {
       parentSession: fork.header.id,
       createdAt: 2,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('under the fork')))
     // A real one-shot child, then a continuable authored below it.
     const oneShot = await ctx.subagents.start('spawn', {
@@ -1102,7 +1104,7 @@ describe('SubagentRuntime.listDescendants', () => {
     const underOneShot = await authorChild(ctx, '00000000-0000-4000-8000-00000000bbb2', {
       parentSession: oneShotId,
       createdAt: 9_999_999_999_999,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('under the one-shot')))
 
     const entries = await ctx.subagents.listDescendants(parent.id)
@@ -1132,7 +1134,7 @@ describe('SubagentRuntime.listDescendants', () => {
     const bare = await authorChild(ctx, '00000000-0000-4000-8000-00000000eee1', {
       parentSession: parent.id,
       createdAt: 1,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, [
       { type: 'turn/start', seq: 0, time: 1, data: { turn: 1, trigger: { kind: 'message', source: { kind: 'user' } } } },
       { type: 'turn/end', seq: 1, time: 2, data: { turn: 1, reason: { kind: 'completed' } } },
@@ -1140,7 +1142,7 @@ describe('SubagentRuntime.listDescendants', () => {
     const below = await authorChild(ctx, '00000000-0000-4000-8000-00000000eee2', {
       parentSession: bare,
       createdAt: 2,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('below the bare node')))
 
     await expect(ctx.subagents.listDescendants(parent.id)).resolves.toEqual([
@@ -1157,12 +1159,12 @@ describe('SubagentRuntime.listDescendants', () => {
     const corrupt = await authorChild(ctx, '00000000-0000-4000-8000-00000000ccc1', {
       parentSession: parent.id,
       createdAt: 1,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('unsupported descriptor', 999)))
     const below = await authorChild(ctx, '00000000-0000-4000-8000-00000000ccc2', {
       parentSession: corrupt,
       createdAt: 2,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('below the corrupt node')))
 
     const entries = await ctx.subagents.listDescendants(parent.id)
@@ -1180,7 +1182,7 @@ describe('SubagentRuntime.listDescendants', () => {
     const childId = await authorChild(ctx, '00000000-0000-4000-8000-00000000ddd1', {
       parentSession: parent.id,
       createdAt: 1,
-      origin: 'subagent',
+      purpose: 'subagent',
     }, childEvents(descriptorPayload('lineage checked')))
     const realInspect = ctx.sessionPersistence.inspect.bind(ctx.sessionPersistence)
     ctx.sessionPersistence.inspect = async (sessionId, signal) => {

@@ -23,6 +23,7 @@ function header(id: string, parentSession?: SessionId): SessionHeader {
     version: 0,
     id: sid(id),
     createdAt: 1000,
+    purpose: parentSession === undefined ? 'interactive' : 'subagent',
     cwd: '/proj',
     ...parentSession === undefined ? {} : { parentSession },
     delegationDepth: parentSession === undefined ? 0 : 1,

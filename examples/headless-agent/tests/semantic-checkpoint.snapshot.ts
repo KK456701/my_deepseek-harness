@@ -28,6 +28,7 @@ async function seedInterruptedSession(root: string, cwd: string): Promise<string
     version: SESSION_FORMAT_VERSION,
     id: sessionId,
     createdAt: 1,
+    purpose: 'interactive',
     cwd,
     delegationDepth: 0,
   }

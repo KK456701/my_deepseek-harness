@@ -38,6 +38,7 @@ function header(id: string, cwd: string | null = '/project'): SessionHeader {
     version: 0,
     id: sid(id),
     createdAt: 100,
+    purpose: 'interactive',
     ...(cwd === null ? {} : { cwd }),
   }
 }

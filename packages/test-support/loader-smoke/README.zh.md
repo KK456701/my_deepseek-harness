@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-用于测试通过 Cordis Loader 启动应用和 `cordis.yml` 的共享子进程 harness。`resolveExampleLaunch` 选择本地 `src` mode（tsx 和根 tsconfig 路径）或 CI `lib` mode（普通 Node 和包导出）；选择依据为显式 mode 或 `DSH_EXAMPLE_MODE`。
+用于测试通过 Cordis Loader 启动应用和 `cordis.yml` 的共享子进程 harness。`resolveExampleLaunch` 选择本地 `src` mode（`tsx/esm` 和根 tsconfig 路径）或 CI `lib` mode（普通 Node 和包导出）；选择依据为显式 mode 或 `DSH_EXAMPLE_MODE`。源码启动仅使用 ESM hook，与 CLI 一致，不安装 tsx 的 CommonJS 解析器。
 
 `runLoaderSmoke` 接受可执行文件路径和配置路径、可选的完整可执行文件参数、环境变量覆盖、标准输入、运行前准备和清理前检查。它负责隔离工作目录、DSH 主目录、诊断、截止时间、终止、EOF 和清理；进程以零状态退出后返回两个流，失败时则返回拒绝并附带两个流。
 

@@ -22,6 +22,8 @@
 
 ## 配置
 
+此包还提供用于记忆的私有 `CodexStructuredRunner` 调用。与普通委派不同，这些调用明确设置模型、推理档位、JSON schema、空临时 cwd、只读 sandbox 和无人值守审批。可选工具关闭；观察到工具 item 或超大结果时会中止并拒绝 attempt。Consumer 拥有持久请求与结果审计。全局 Codex 配置从不被修改。结构化结果包含已暴露 usage 和错误，但不包含工具 payload、commentary 或推理。
+
 | 配置键 | 默认值 | 含义 |
 |---|---|---|
 | `providerName` | `codex` | `ctx.subagents` 中的非空注册名称；每个已挂载实例都需要唯一值。 |

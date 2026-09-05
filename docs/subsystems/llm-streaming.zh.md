@@ -534,12 +534,16 @@ interface GenerateOptions {
    * to separate cursors; adapters may map it to model-hidden transport metadata.
    */
   sessionId?: Branded<'SessionId'>
+  /** Model-hidden identity and retry ordinal for a durably audited auxiliary dispatch. */
+  audit?: { callId: Branded<'AuditedLlmCallId'>; attempt: number }
   /**
    * Provider-neutral classification for an auxiliary model call. Adapters may
    * map the purpose to model-hidden transport metadata or purpose-specific
    * generation policy. Ordinary conversation requests leave it unset.
    */
-  purpose?: 'compaction' | 'session-title'
+  purpose?: 'compaction' | 'session-title' | 'memory-extraction' | 'memory-consolidation'
+    | 'task-contract-extraction' | 'final-candidate-review' | 'final-shadow-review'
+    | 'progress-integrity-observation' | 'task-authorization'
 }
 ```
 
@@ -629,6 +633,41 @@ interface LlmDiscoveredModel {
   maxTokens?: number
 }
 ```
+
+账户余额查询使用提供方已注册的 settings namespace，不接受浏览器提供的端点或凭据。金额保持为十进制字符串，使传输与展示不会引入二进制舍入。
+
+```ts type-equiv
+/**
+ * One account-balance line reported by a provider endpoint. Every field is a
+ * string because providers disclose amounts as currency-formatted text (e.g.
+ * `"110.00"`); consumers render them verbatim beside the currency code. A
+ * surface shows the whole list; the absence of a granted/topped-up split means
+ * the provider reported only a total.
+ */
+interface LlmAccountBalance {
+  /** ISO 4217 currency code of this balance line (`CNY`, `USD`, …). */
+  currency: string
+  /** Total available balance in {@link currency} major units. */
+  total: string
+  /** Provider-granted (promotional) portion, when disclosed. */
+  granted?: string
+  /** User-topped-up portion, when disclosed. */
+  toppedUp?: string
+}
+```
+
+```ts type-equiv
+/**
+ * One provider account-balance query. The request is intentionally bare — the
+ * adapter resolves its own endpoint and credential from its registered
+ * configuration, so a caller names the provider namespace and nothing else.
+ */
+interface LlmBalanceRequest {
+  /** Caller cancellation; implementations must settle promptly after it aborts. */
+  signal?: AbortSignal
+}
+```
+
 
 ### 请求信封：`LlmCallConfig` 与记录的 header
 
@@ -818,6 +857,28 @@ registerModelDiscovery( settingsNs: string, discover: (request: LlmModelDiscover
 async discoverModels( settingsNs: string, request: LlmModelDiscoveryRequest, ): Promise<LlmDiscoveredModel[]>
 
 /**
+ * Offer to query one provider account's balance on behalf of the settings
+ * namespace this plugin owns. The namespace is the key because that is what
+ * a configuration surface already holds from the configurable-provider
+ * directory, and the adapter resolves its own endpoint and credential from
+ * its registered configuration. Disposed with the fiber.
+ * @param settingsNs - the namespace whose profiles this query serves.
+ * @param query - resolves the provider's account balance; must honor `request.signal`.
+ * @returns the disposer that withdraws the offer.
+ */
+registerBalanceQuery( settingsNs: string, query: (request: LlmBalanceRequest) => Promise<readonly LlmAccountBalance[]>, ): () => void
+
+/**
+ * Query one registered provider namespace's account balance. The adapter
+ * resolves its endpoint and credential from its own configuration; the
+ * request carries only caller cancellation.
+ * @param settingsNs - namespace whose registered balance query serves this call.
+ * @param request - caller cancellation (endpoint and credential are adapter-owned).
+ * @returns validated balance lines, in provider order.
+ */
+async queryBalance( settingsNs: string, request: LlmBalanceRequest = {}, ): Promise<LlmAccountBalance[]>
+
+/**
  * Resolve the retry policy captured when one provider route was registered.
  * @param provider - registered provider route to inspect.
  * @returns the provider-owned policy, with normal defaults already resolved.
@@ -879,7 +940,7 @@ async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<Prepared
 stream(options: GenerateOptions): AsyncIterable<StreamChunk>
 ```
 
-Source: [`packages/llm/llm/src/index.ts:284`](../../packages/llm/llm/src/index.ts)
+Source: [`packages/llm/llm/src/index.ts:286`](../../packages/llm/llm/src/index.ts)
 
 <a id="llm-events"></a>
 
@@ -928,5 +989,5 @@ Waterfall around every streaming model call (retry, replay, routing). Bound to t
 'llm/stream'(this: LlmRuntime, options: GenerateOptions, next: () => AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk>
 ```
 
-Source: [`packages/llm/llm/src/index.ts:64`](../../packages/llm/llm/src/index.ts)
+Source: [`packages/llm/llm/src/index.ts:66`](../../packages/llm/llm/src/index.ts)
 <!-- END GENERATED cordis-surface -->

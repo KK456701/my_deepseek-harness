@@ -337,9 +337,15 @@ export class ReactLoopAgent implements Agent {
     const system = renderPrompt(assembly)
 
     while (true) {
+      this.dispatch.emit('agent/request-starting', { turn, step, signal })
       const { request, preparedCall } = await this.buildRequest(
         turn, step, assembly.tools, system, this.session.deriveMessages(), signal,
       )
+      const delivery = await this.dispatch.waterfall(
+        'agent/assistant-delivery', { turn, step, signal },
+        () => Promise.resolve({ kind: 'live' as const }),
+      )
+      signal.throwIfAborted()
       const assembler = new BlockAssembler()
       const chunkSeqs: number[] = []
       try {
@@ -347,12 +353,18 @@ export class ReactLoopAgent implements Agent {
         signal.throwIfAborted()
         for await (const chunk of stream) {
           signal.throwIfAborted()
-          chunkSeqs.push(this.session.append('assistant/chunk', { turn, step, chunk }).seq)
+          if (delivery.kind === 'live') {
+            chunkSeqs.push(this.session.append('assistant/chunk', { turn, step, chunk }).seq)
+          } else {
+            chunkSeqs.push(...delivery.writer.append(chunk))
+          }
           assembler.push(chunk)
         }
         signal.throwIfAborted()
       } catch (error: unknown) {
-        if (signal.aborted) {
+        if (delivery.kind === 'deferred') {
+          delivery.writer.abort(error)
+        } else if (signal.aborted) {
           const content = assembler.interruptedBlocks()
           if (content.length > 0) {
             this.session.append('assistant/message', {
@@ -371,6 +383,7 @@ export class ReactLoopAgent implements Agent {
       }
       const finish = assembler.finish
       if (finish.kind === 'error' || finish.kind === 'aborted') {
+        if (delivery.kind === 'deferred') delivery.writer.abort(finish.failure)
         const action = await this.dispatch.waterfall(
           'agent/request-error', {
             turn,
@@ -397,19 +410,67 @@ export class ReactLoopAgent implements Agent {
           ...assembler.replayState !== undefined ? { replayState: assembler.replayState } : {},
         },
       })
-      this.session.append(
-        'assistant/message',
-        {
-          turn,
-          step,
-          message,
-          ...assembler.usage === undefined ? {} : { usage: assembler.usage },
-        },
-        { surfaceOp: 'append', sourceEventSeqs: chunkSeqs },
-      )
+      const toolCalls = message.content.filter(block => block.type === 'tool-call')
+      const appendMessage = (): void => {
+        this.session.append(
+          'assistant/message',
+          {
+            turn,
+            step,
+            message,
+            ...assembler.usage === undefined ? {} : { usage: assembler.usage },
+          },
+          { surfaceOp: 'append', sourceEventSeqs: chunkSeqs },
+        )
+      }
+      if (delivery.kind === 'live') {
+        appendMessage()
+      } else {
+        let stagedSeqs: readonly number[]
+        try {
+          stagedSeqs = delivery.writer.complete(
+            message,
+            assembler.usage,
+            finish.kind === 'max-tokens' ? 'max-tokens' : 'completed',
+          )
+        } catch (error: unknown) {
+          delivery.writer.abort(error)
+          throw error
+        }
+        chunkSeqs.splice(0, chunkSeqs.length, ...stagedSeqs)
+        if (finish.kind !== 'max-tokens' && toolCalls.length > 0) {
+          appendMessage()
+          delivery.writer.committed?.()
+        } else {
+          const decision = await this.dispatch.waterfall(
+            'agent/final-candidate', {
+              turn,
+              step,
+              message,
+              usage: assembler.usage,
+              finish: finish.kind === 'max-tokens' ? 'max-tokens' : 'completed',
+              sourceEventSeqs: stagedSeqs,
+              signal,
+            },
+            () => Promise.resolve({ kind: 'commit' as const }),
+          )
+          signal.throwIfAborted()
+          const accepted = decision.kind === 'commit'
+            && (decision.validate === undefined || decision.validate())
+          if (accepted) {
+            appendMessage()
+            decision.committed?.()
+          } else {
+            signal.throwIfAborted()
+            if (this.inbox.nextStep.length === 0) {
+              throw new Error('deferred final candidate continued without pending next-step input')
+            }
+            return null
+          }
+        }
+      }
       if (finish.kind === 'max-tokens') return { kind: 'max-tokens' }
 
-      const toolCalls = message.content.filter(block => block.type === 'tool-call')
       if (toolCalls.length === 0) return { kind: 'completed' }
       const { concluded } = await executeToolCalls(
         this.loopCtx, turn, step, toolCalls, signal,

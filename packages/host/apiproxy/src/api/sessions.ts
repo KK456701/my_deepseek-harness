@@ -7,7 +7,7 @@
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
-import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent, SessionId, SessionPurpose } from '@deepseek-ai/dsh-session/types'
 // The pure-type outlet: api/ is browser-importable, and the package root's
 // cordis Context merge (via dsh-agent) must not enter client aggregates.
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
@@ -37,7 +37,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
 
 /** Persisted hints used to summarize a cold Session without reading a large log. */
 export interface SessionListMetadata {
-  /** Whether the checkpoint prefix contains no turn/start event. */
+  /** Whether the checkpoint prefix contains neither turn/start nor session/retained. */
   blank: boolean
   /** Latest source.kind=user message time in the checkpoint prefix. */
   lastPromptAt: number | null
@@ -185,19 +185,20 @@ export interface SessionSummary {
   /** Status of the attached agent; always false for cold (unattached) sessions. */
   running: boolean
   /**
-   * Derived conversation-not-started bit: true while no turn has run.
+   * Derived reusable-session bit: true while no turn has run and no explicit
+   * session/retained record preserves the Session for inspection.
    * Standalone plugin events — command lifecycle
    * records, plan/mode, titles, goals — do not open a turn and therefore do
    * not clear it. Clients hide blank Sessions from lists and reuse them for
    * New Session on the same workspace. A cold Session is true only when a
-   * small-artifact read verifies that no `turn/start` exists; unavailable
+   * small-artifact read verifies that neither event exists; unavailable
    * or oversized artifacts conservatively report false.
    */
   blank: boolean
   /** fork/spawn lineage (session.header.parentSession passthrough); absent for root sessions. */
   parentSessionId?: SessionId
-  /** Coarse durable origin used by navigation surfaces; never proves resumability. */
-  origin?: 'subagent'
+  /** Durable product role used by navigation surfaces. */
+  purpose: SessionPurpose
   /** Session working directory (header.cwd passthrough); absent when unrecorded. */
   cwd?: string
   /**

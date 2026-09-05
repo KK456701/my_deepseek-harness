@@ -96,6 +96,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
       version: SESSION_FORMAT_VERSION,
       id: sessionId,
       createdAt: 1,
+      purpose: 'interactive',
     })
     await first.ctx.sessionPersistence.append(sessionId, [
       {

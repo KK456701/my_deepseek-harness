@@ -498,6 +498,14 @@ export interface DefineToolOptions<S extends ParameterSchemaSpec, O extends Valu
   }
   /** Optional positive cooperative timeout budget in milliseconds. */
   readonly timeoutMs?: number
+  /** Runtime-owned classification, not sent to the model. */
+  readonly taskControl?: 'plan' | 'ask-user'
+  /** External effect used by optional execution policies. */
+  readonly effect?: 'read-only' | 'side-effect' | 'unknown'
+  /** Runtime-only repetition policy, not part of model tool schemas. */
+  readonly repeatPolicy?: ToolDefinition['repeatPolicy']
+  /** Target-bound active result check used for live and replayed repetition detection. */
+  readonly activePollingResult?: ToolDefinition['activePollingResult']
   /**
    * Pure classifier for sibling overlap.
    * @param args - typed validated arguments.
@@ -582,6 +590,10 @@ export function defineTool<const S extends ParameterSchemaSpec, const O extends 
       } : {},
     },
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    ...(options.taskControl !== undefined ? { taskControl: options.taskControl } : {}),
+    ...(options.effect !== undefined ? { effect: options.effect } : {}),
+    ...(options.repeatPolicy !== undefined ? { repeatPolicy: options.repeatPolicy } : {}),
+    ...(options.activePollingResult !== undefined ? { activePollingResult: options.activePollingResult } : {}),
     async execute(args: unknown, exec: ToolRunContext): Promise<JsonValue> {
       const violations = validate(args)
       if (violations.length > 0) throw new ToolArgsError(violations)

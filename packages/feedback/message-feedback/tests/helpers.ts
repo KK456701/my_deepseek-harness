@@ -101,6 +101,7 @@ export function messageFixture(
     version: SESSION_FORMAT_VERSION,
     id,
     createdAt: options.createdAt ?? 1_700_000_000_000,
+    purpose: 'interactive',
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
   }
   const session = Session.create(id, [], header)

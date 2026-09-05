@@ -1,7 +1,7 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { type Agent, type AssistantStagingWriter } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -26,6 +26,69 @@ function send(agent: Agent, text: string): void {
 }
 
 describe('Agent', () => {
+  it('keeps deferred chunks out of the transcript until the final candidate commits', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('accepted')]))
+    const agent = ctx.agentLoop.create(SessionId('deferred-commit'), { provider: 'mock', model: 'mock' })
+    const staged: unknown[] = []
+    let completed = false
+    let committed = false
+    const writer: AssistantStagingWriter = {
+      append: (chunk) => { staged.push(chunk); return [] },
+      complete: () => { completed = true; return [] },
+      committed: () => { committed = true },
+      abort: () => undefined,
+    }
+    ctx.on('agent/assistant-delivery', async ({ agent: subject }, _next) =>
+      subject === agent ? { kind: 'deferred', writer } : { kind: 'live' })
+    ctx.on('agent/final-candidate', async ({ agent: subject, message }, next) => {
+      if (subject !== agent) return next()
+      expect(completed).toBe(true)
+      expect(agent.session.events.some(event => event.type === 'assistant/message')).toBe(false)
+      expect(message.content).toEqual([{ type: 'text', text: 'accepted' }])
+      return { kind: 'commit' }
+    })
+
+    send(agent, 'review this')
+    await agent.whenIdle()
+
+    expect(staged.length).toBeGreaterThan(0)
+    expect(committed).toBe(false)
+    expect(agent.session.events.filter(event => event.type === 'assistant/chunk')).toHaveLength(0)
+    expect(agent.session.events.filter(event => event.type === 'assistant/message')).toHaveLength(1)
+  })
+
+  it('rechecks a deferred candidate synchronously and continues on newly arrived steering', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('obsolete'), textResponse('current')]))
+    const agent = ctx.agentLoop.create(SessionId('deferred-cas'), { provider: 'mock', model: 'mock' })
+    let finalCandidates = 0
+    ctx.on('agent/assistant-delivery', async ({ agent: subject }, next) => {
+      if (subject !== agent) return next()
+      const writer: AssistantStagingWriter = {
+        append: () => [],
+        complete: () => [],
+        abort: () => undefined,
+      }
+      return { kind: 'deferred', writer }
+    })
+    ctx.on('agent/final-candidate', async ({ agent: subject }, next) => {
+      if (subject !== agent) return next()
+      finalCandidates += 1
+      if (finalCandidates === 1) {
+        agent.steer(createUserMessage({ content: [{ type: 'text', text: 'new direction' }], source: { kind: 'plugin', plugin: 'test-gate' } }))
+        return { kind: 'commit', validate: () => false }
+      }
+      return { kind: 'commit' }
+    })
+
+    send(agent, 'start')
+    await agent.whenIdle()
+
+    const messages = agent.session.events.flatMap(event => event.type === 'assistant/message' ? [event.data.message] : [])
+    expect(finalCandidates).toBe(2)
+    expect(messages).toHaveLength(1)
+    expect(messages[0]?.content).toEqual([{ type: 'text', text: 'current' }])
+  })
+
   it('idle inject() durably stages context without opening a turn', async () => {
     const adapter = new MockAdapter([textResponse('ok')])
     const ctx = await harness(adapter)

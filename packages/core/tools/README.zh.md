@@ -4,7 +4,11 @@
 
 工具注册表与执行流水线。工具插件注册各自的 schema 和执行器；agent loop（智能体循环）依次让每次调用经过 `tools/pre-execute`（可扩展的允许／拒绝门禁）→ 已注册的单调守卫 → `tools/execute`（供超时／重试／指标插件使用的环绕分发包装层）→ `tools/post-execute`（检查／替换结果、附加上下文）→ 由工具定义持有的 `finalizeContent` 边界 → 仅观测的 `tools/result` 通知。注册表还决定以何种方式向模型呈现工具：`mode` 配置可以选择原生 Function Calling（函数调用）、[Code Mode](#code-mode)，或同时选择两者；单个 agent 可用 `presentAs` 为自己遮蔽该默认值。
 
+`ToolExecution.started` 表示实际进入工具实现，不是派发意图；`approvedOnce` 只属于该次执行。异步审批和包装器结束后还会执行最终同步 Guard。仅运行时使用的 `repeatPolicy: polling` 要求工具只读，并由 Provider 回调核对结果中的活跃目标；嵌套轮询结果也保留此元数据。
+
 ## 服务：`ToolRuntime`（ctx 键：`tools`）
+
+`tools/dispatch-ready` 是派发包装器结束后的最后一个异步执行前 waterfall，之后注册表在工具本体启动前同步检查取消和 guard。工具定义拥有的 `effect` 与 `taskControl` 元数据参与执行策略，模型参数不能设置这些值。计划或提问控制不授予普通任务工具权限。
 
 ### 配置
 

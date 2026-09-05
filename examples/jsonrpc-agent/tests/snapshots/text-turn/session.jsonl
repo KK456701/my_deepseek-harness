@@ -1,4 +1,4 @@
-{"type":"session","version":0,"id":"sdk-snapshot-text","createdAt":1785097381464,"cwd":"{{cwd}}","delegationDepth":0}
+{"type":"session","version":0,"id":"sdk-snapshot-text","createdAt":1785097381464,"purpose":"interactive","cwd":"{{cwd}}","delegationDepth":0}
 {"type":"agent/inbox/spliced","seq":0,"time":1785498588575,"data":{"target":"next-turn","start":0,"inserted":[{"content":[{"type":"text","text":"Reply with exactly: SDK snapshot OK"}],"source":{"kind":"user"},"role":"user","id":"2950333f-90ff-4b11-b8f9-082612c97488"}]}}
 {"type":"turn/start","seq":1,"time":1785821459144,"data":{"turn":1}}
 {"type":"agent/inbox/spliced","seq":2,"time":1785821459144,"data":{"target":"next-turn","start":0,"removedCount":1,"inserted":[]}}

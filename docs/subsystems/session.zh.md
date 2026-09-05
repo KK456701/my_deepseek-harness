@@ -102,6 +102,17 @@ interface SessionEventMap {
    * changes. It does not participate in request reconstruction or header equality.
    */
   'request/context': RequestContext
+  /** Retains an inspectable non-conversation record in session lists without inventing a Worker turn. It is not model input or execution authorization. */
+  'session/retained': { reason: string }
+  /** Records usage and wall time for one audited capability-owned model call that does not produce an interactive Assistant Message. */
+  'llm/audited-call': {
+    callId: AuditedLlmCallId
+    purpose: string
+    provider: string
+    model: string
+    durationMs: number
+    usage?: TokenUsage
+  }
   /**
    * Marks the end of a constructor seed. Events before it have smaller seq
    * values and came from the seed (resume, fork, or replay); this lifecycle
@@ -454,8 +465,8 @@ declare class Session {
    *   {@link SurfaceEventType} events (every message-producing event must
    *   declare how it joins the surface, the sole source of derived model
    *   history) and
-   *   rejected by the compiler for non-surface types like `turn/start` or
-   *   `assistant/chunk`.
+   *   rejected by the compiler for non-surface types. Non-surface events may
+   *   instead set `ignorable: true` when readers may safely skip that event.
    * @returns the logged event — its assigned `seq`/`time` plus the SNAPSHOT of
    *   `data` that entered the log, so reading `event.data` back sees the logged
    *   value, never the caller's still-mutable input.
@@ -476,7 +487,7 @@ declare class Session {
   append<T extends SessionEventType>(
     type: T,
     data: SessionEventMap[T],
-    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : []
+    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : [opts?: { ignorable?: true }]
   ): SessionEvent<T>;
   /**
    * The {@link EpochHeader} in force after the log's last header event — the
@@ -752,7 +763,7 @@ fork(source: SessionForkSource, boundary?: number, childSessionId?: SessionId): 
 
 Types: [CreateSessionOptions](persistence.md) · [PrepareSessionOptions](persistence.md) · [SessionId](core.md)
 
-Source: [`packages/core/session/src/index.ts:792`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:795`](../../packages/core/session/src/index.ts)
 
 <a id="session-events"></a>
 

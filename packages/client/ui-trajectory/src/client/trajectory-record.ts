@@ -10,6 +10,7 @@ export type TrajectoryCellKind =
   | 'context'
   | 'compacted'
   | 'message'
+  | 'model'
   | 'tool'
   | 'subtool'
 
@@ -35,6 +36,10 @@ export interface TrajectorySourceBlock {
 
 /** Data and optional presentation attributes for one trajectory record. */
 export interface TrajectoryCellProps extends HTMLAttributes<HTMLDivElement> {
+  /** Consumer-owned inspector tabs, rendered as data rather than executable markup. */
+  detailSections?: readonly { id: string; label: string; content: string; format: 'text' | 'markdown' | 'json' }[]
+  /** Explicit lifecycle status for independent non-Worker operations. */
+  operationState?: 'running' | 'complete' | 'error'
   /** 1-based record index shown as `#N`. */
   index: number
   /** Projection-stable identity when no single source event owns the record lifecycle. */

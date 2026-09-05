@@ -17,7 +17,7 @@ interface ToolOutputDefinition {
   readonly schema: JsonSchemaNode
   /** Pure projection from validated arguments and value to Native/model content. */
   render(args: unknown, value: JsonValue): ContentBlock[]
-  /** Pure replayable presentation projection, computed only for top-level calls. */
+  /** Pure replayable metadata, computed for top-level calls and trusted polling results. */
   presentationMeta?(args: unknown, value: JsonValue): JsonValue
 }
 ```
@@ -25,6 +25,19 @@ interface ToolOutputDefinition {
 ```ts type-equiv
 /** A registered tool: its schema plus the execution function. */
 interface ToolDefinition extends ToolSchema {
+  /** Trusted implementation metadata, never model arguments or a sandbox override. */
+  readonly taskControl?: 'plan' | 'ask-user'
+  /** Declared external effect; omission requires conservative authorization review. */
+  readonly effect?: 'read-only' | 'side-effect' | 'unknown'
+  /** Runtime-only repeat handling; omission is strict. Polling requires a target/result check. */
+  readonly repeatPolicy?: 'strict' | 'polling'
+  /**
+   * Recognize a successful observation of the same existing, still-active target.
+   * @param args Frozen call arguments, including the target identity.
+   * @param meta Tool-owned durable presentation metadata from the validated result.
+   * @returns True only for active polling; missing/terminal metadata must return false.
+   */
+  activePollingResult?(args: unknown, meta: JsonValue | undefined): boolean
   /** Mandatory canonical output declaration. */
   readonly output: ToolOutputDefinition
   /**
@@ -289,6 +302,10 @@ interface CodeDispatchLog {
  * observers run.
  */
 interface ToolExecution extends ToolExecutionInput {
+  /** Whether the registry entered the actual tool body; denials remain false. */
+  readonly started: boolean
+  /** Whether this exact execution received an allowed-once tool approval. */
+  readonly approvedOnce: boolean
   /** Root model-requested call, resolved for every root and nested execution. */
   readonly rootCallId: CallId
   /** Registry-assigned identity shared with nested calls only as their opaque `parent` token. */
@@ -571,7 +588,7 @@ async execute(exec: ToolExecutionInput): Promise<ToolExecutionResult>
 
 Types: [ScopeKey](scope.md)
 
-Source: [`packages/core/tools/src/index.ts:787`](../../packages/core/tools/src/index.ts)
+Source: [`packages/core/tools/src/index.ts:816`](../../packages/core/tools/src/index.ts)
 
 <a id="tools-events"></a>
 
@@ -596,7 +613,7 @@ A tool was registered or unregistered, or a scoped restriction changed (the avai
 'tools/change'(): void
 ```
 
-Source: [`packages/core/tools/src/index.ts:207`](../../packages/core/tools/src/index.ts)
+Source: [`packages/core/tools/src/index.ts:216`](../../packages/core/tools/src/index.ts)
 
 <a id="toolscode-dispatch-log--waterfall"></a>
 
@@ -623,7 +640,29 @@ Allow a listener to replace content in the DURABLE LOG COPY of one `run_code` su
 
 Types: [ContentBlock](llm-streaming.md) · [Scoped](scope.md)
 
-Source: [`packages/core/tools/src/index.ts:189`](../../packages/core/tools/src/index.ts)
+Source: [`packages/core/tools/src/index.ts:198`](../../packages/core/tools/src/index.ts)
+
+<a id="toolsdispatch-ready--waterfall"></a>
+
+#### `tools/dispatch-ready` — waterfall
+
+Persist dispatch intent after around-dispatch wrappers and before the body. The registry awaits all listeners, then rechecks cancellation and monotonic guards. Completion of this hook is not proof that the body ran. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent's calls.
+
+```ts cordis-catalog
+/**
+ * Persist dispatch intent after around-dispatch wrappers and before the body.
+ * The registry awaits all listeners, then rechecks cancellation and monotonic
+ * guards. Completion of this hook is not proof that the body ran.
+ * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent's calls.
+ * @param exec - Identity-protected execution, including nested calls.
+ * @mode waterfall
+ */
+'tools/dispatch-ready'(this: Scoped<ToolRuntime>, exec: ToolExecution, next: () => Promise<void>): Promise<void>
+```
+
+Types: [Scoped](scope.md)
+
+Source: [`packages/core/tools/src/index.ts:172`](../../packages/core/tools/src/index.ts)
 
 <a id="toolsexecute--waterfall"></a>
 
@@ -672,7 +711,7 @@ Accept, replace, enrich, or block a normalized dispatch result. `next()` accepts
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/tools/src/index.ts:175`](../../packages/core/tools/src/index.ts)
+Source: [`packages/core/tools/src/index.ts:184`](../../packages/core/tools/src/index.ts)
 
 <a id="toolspre-execute--waterfall"></a>
 
@@ -716,5 +755,5 @@ Observe the frozen, lossless-JSON final outcome. Listener failures are contained
 
 Types: [Scoped](scope.md)
 
-Source: [`packages/core/tools/src/index.ts:197`](../../packages/core/tools/src/index.ts)
+Source: [`packages/core/tools/src/index.ts:206`](../../packages/core/tools/src/index.ts)
 <!-- END GENERATED cordis-surface -->

@@ -230,6 +230,17 @@ describe('serializeRequest', () => {
     expect(wire.tools).toBeUndefined()
   })
 
+  it.each(['final-candidate-review', 'final-shadow-review'] as const)('requests JSON content for tool-free %s without lowering effort', (purpose) => {
+    const options = request({ purpose, messages: history, reasoningEffort: ReasoningEffortId('high') })
+    expect(serializeRequest(options)).toMatchObject({
+      response_format: { type: 'json_object' }, thinking: { type: 'enabled' }, reasoning_effort: 'high',
+    })
+    expect(serializeRequest({ ...options, tools: [] }).response_format).toEqual({ type: 'json_object' })
+    expect(serializeRequest({ ...options, tools: [{ name: 'read', description: 'Read evidence', parameters: {} }] }).response_format).toBeUndefined()
+    expect(serializeRequest(request({ messages: history })).response_format).toBeUndefined()
+    expect(serializeRequest(request({ purpose: 'requirement-change-parsing', messages: history })).response_format).toBeUndefined()
+  })
+
   it.each(['low', 'high', 'max'] as const)('maps adapter-default thinking and request effort %s', (effort) => {
     const wire = serializeRequest(
       request({ messages: history, reasoningEffort: ReasoningEffortId(effort) }),

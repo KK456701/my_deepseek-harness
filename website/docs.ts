@@ -277,6 +277,7 @@ const subsystemGroups = [
     ['token-meter.md', 'Token 计量', 'Token metering'],
     ['system-prompt.md', '系统提示词', 'System prompts'],
     ['compaction.md', '上下文压缩', 'Compaction'],
+    ['memory.md', '长期记忆', 'Long-term memory'],
   ]],
   ['执行与工具', 'Execution and tools', [
     ['tools.md', '工具', 'Tools'],

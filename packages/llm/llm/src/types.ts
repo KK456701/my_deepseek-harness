@@ -229,6 +229,34 @@ export interface LlmDiscoveredModel {
   maxTokens?: number
 }
 
+/**
+ * One account-balance line reported by a provider endpoint. Every field is a
+ * string because providers disclose amounts as currency-formatted text (e.g.
+ * `"110.00"`); consumers render them verbatim beside the currency code. A
+ * surface shows the whole list; the absence of a granted/topped-up split means
+ * the provider reported only a total.
+ */
+export interface LlmAccountBalance {
+  /** ISO 4217 currency code of this balance line (`CNY`, `USD`, …). */
+  currency: string
+  /** Total available balance in {@link currency} major units. */
+  total: string
+  /** Provider-granted (promotional) portion, when disclosed. */
+  granted?: string
+  /** User-topped-up portion, when disclosed. */
+  toppedUp?: string
+}
+
+/**
+ * One provider account-balance query. The request is intentionally bare — the
+ * adapter resolves its own endpoint and credential from its registered
+ * configuration, so a caller names the provider namespace and nothing else.
+ */
+export interface LlmBalanceRequest {
+  /** Caller cancellation; implementations must settle promptly after it aborts. */
+  signal?: AbortSignal
+}
+
 /** One adapter-discovered model; catalog membership is advisory, not request validation. */
 export interface LlmModelInfo {
   /** Provider route that owns this model entry. */
@@ -368,10 +396,14 @@ export interface GenerateOptions {
    * to separate cursors; adapters may map it to model-hidden transport metadata.
    */
   sessionId?: Branded<'SessionId'>
+  /** Model-hidden identity and retry ordinal for a durably audited auxiliary dispatch. */
+  audit?: { callId: Branded<'AuditedLlmCallId'>; attempt: number }
   /**
    * Provider-neutral classification for an auxiliary model call. Adapters may
    * map the purpose to model-hidden transport metadata or purpose-specific
    * generation policy. Ordinary conversation requests leave it unset.
    */
-  purpose?: 'compaction' | 'session-title'
+  purpose?: 'compaction' | 'session-title' | 'memory-extraction' | 'memory-consolidation'
+    | 'requirement-change-parsing' | 'final-candidate-review' | 'final-shadow-review'
+    | 'progress-integrity-observation'
 }

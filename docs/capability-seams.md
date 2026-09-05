@@ -74,6 +74,19 @@ flowchart LR
   svc_sessionTitle["ctx.sessionTitle<br/>Log-backed session titles"]
   pkg_session_title_first_prompt_llm["session-title-first-prompt-llm"]
   pkg_session_title_all_prompts_llm["session-title-all-prompts-llm"]
+  pkg_memory["memory"]
+  svc_memory["ctx.memory<br/>Profile long-term memory"]
+  pkg_memory_local["memory-local"]
+  pkg_memory_prompt["memory-prompt"]
+  pkg_memory_remote["memory-remote"]
+  pkg_memoryPipelineStore["memoryPipelineStore"]
+  pkg_memoryMaintenance["memoryMaintenance"]
+  pkg_memory_pipeline_store["memory-pipeline-store"]
+  svc_memoryPipelineStore["ctx.memoryPipelineStore<br/>Private memory pipeline store"]
+  pkg_memory_scheduler["memory-scheduler"]
+  pkg_memory_maintenance["memory-maintenance"]
+  svc_memoryMaintenance["ctx.memoryMaintenance<br/>Memory scheduler lifecycle"]
+  pkg_memory_maintenance_triggers["memory-maintenance-triggers"]
   pkg_system_prompt["system-prompt"]
   svc_systemPrompt["ctx.systemPrompt<br/>System prompt assembly registry"]
   pkg_tools["tools"]
@@ -160,6 +173,15 @@ flowchart LR
   pkg_subagent_dsh_sdk["subagent-dsh-sdk"]
   pkg_tool_subagent_control["tool-subagent-control"]
   pkg_tool_ralph["tool-ralph"]
+  pkg_codex_structured_runner["codex-structured-runner"]
+  svc_codexStructuredRunner["ctx.codexStructuredRunner<br/>Auditable Codex structured calls"]
+  pkg_experimental_task_contract["experimental-task-contract"]
+  svc_taskContract["ctx.taskContract<br/>Versioned current requirements and claimed input"]
+  pkg_experimental_final_completeness_gate["experimental-final-completeness-gate"]
+  pkg_experimental_progress_integrity_observer["experimental-progress-integrity-observer"]
+  pkg_experimental_task_execution_control["experimental-task-execution-control"]
+  svc_progressIntegrityObserver["ctx.progressIntegrityObserver<br/>Event-triggered progress observation"]
+  svc_taskExecutionControl["ctx.taskExecutionControl<br/>Shared task execution control"]
   pkg_agent_team["agent-team"]
   svc_agentTeams["ctx.agentTeams<br/>Agent Teams coordination domain"]
   pkg_tool_agent_team["tool-agent-team"]
@@ -214,6 +236,7 @@ flowchart LR
   pkg_bash_sandbox --> svc_shell
   pkg_code_runtime --> svc_codeRuntime
   pkg_code_runtime_worker --> svc_codeRuntime
+  pkg_codex_structured_runner --> svc_codexStructuredRunner
   pkg_commands --> svc_commands
   pkg_compaction --> svc_compaction
   pkg_compaction_basic --> svc_compaction
@@ -226,6 +249,9 @@ flowchart LR
   pkg_directory_picker_browse --> svc_directoryPicker
   pkg_directory_picker_native --> svc_directoryPicker
   pkg_e2b --> svc_e2b
+  pkg_experimental_progress_integrity_observer --> svc_progressIntegrityObserver
+  pkg_experimental_task_contract --> svc_taskContract
+  pkg_experimental_task_execution_control --> svc_taskExecutionControl
   pkg_file_reference --> svc_fileReferences
   pkg_file_reference_local --> svc_fileReferences
   pkg_fs --> svc_fs
@@ -242,6 +268,12 @@ flowchart LR
   pkg_llm_replay --> svc_llm
   pkg_lsp --> svc_lsp
   pkg_lsp_local --> svc_lsp
+  pkg_memory --> svc_memory
+  pkg_memory_local --> svc_memory
+  pkg_memory_local --> svc_memoryPipelineStore
+  pkg_memory_maintenance --> svc_memoryMaintenance
+  pkg_memory_pipeline_store --> svc_memoryPipelineStore
+  pkg_memory_scheduler --> svc_memoryMaintenance
   pkg_message_feedback --> svc_messageFeedback
   pkg_modules --> svc_clientModules
   pkg_permission_presets --> svc_permissionPresets
@@ -280,6 +312,7 @@ flowchart LR
   pkg_subagent --> svc_subagents
   pkg_subagent_acp --> svc_subagents
   pkg_subagent_claude_code --> svc_subagents
+  pkg_subagent_codex --> svc_codexStructuredRunner
   pkg_subagent_codex --> svc_subagents
   pkg_subagent_dsh_sdk --> svc_subagents
   pkg_subagent_fork_in_process --> svc_subagents
@@ -317,6 +350,7 @@ flowchart LR
   svc_attachments --> pkg_llm_pi_ai
   svc_clientModules --> pkg_hmr
   svc_codeRuntime --> pkg_tools
+  svc_codexStructuredRunner --> pkg_memory_scheduler
   svc_compaction --> pkg_compaction_basic
   svc_cordisInspect --> pkg_tool_cordis
   svc_credentials --> pkg_apiproxy
@@ -338,6 +372,11 @@ flowchart LR
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
+  svc_memory --> pkg_memory_prompt
+  svc_memory --> pkg_memory_remote
+  svc_memoryMaintenance --> pkg_memory_maintenance_triggers
+  svc_memoryPipelineStore --> pkg_memory_scheduler
+  svc_progressIntegrityObserver --> pkg_experimental_task_execution_control
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -393,6 +432,11 @@ flowchart LR
   svc_systemPrompt --> pkg_tool_terminal
   svc_systemPrompt --> pkg_tool_web
   svc_systemPrompt --> pkg_tools
+  svc_taskContract --> pkg_experimental_final_completeness_gate
+  svc_taskContract --> pkg_experimental_progress_integrity_observer
+  svc_taskContract --> pkg_experimental_task_execution_control
+  svc_taskExecutionControl --> pkg_experimental_final_completeness_gate
+  svc_taskExecutionControl --> pkg_experimental_progress_integrity_observer
   svc_terminals --> pkg_tool_terminal
   svc_tokenMeter --> pkg_compaction_basic
   svc_toolResultPruner --> pkg_compaction_basic
@@ -417,6 +461,10 @@ flowchart LR
   svc_workflowEngine --> pkg_tool_workflow
   svc_workspaceRegistry --> pkg_apiproxy
   svc_fs -. event gate .-> pkg_fs_observation_policy
+  svc_memory -. event gate .-> pkg_memoryMaintenance
+  svc_memory -. event gate .-> pkg_memoryPipelineStore
+  svc_memoryMaintenance -. event gate .-> pkg_memoryPipelineStore
+  svc_memoryPipelineStore -. event gate .-> pkg_memory
 ```
 
 | ctx key | Role | Owner | Implementations | Direct consumers | Companion plugins | Note |
@@ -441,6 +489,9 @@ flowchart LR
 | `ctx.fileReferences` | `seam` | [`file-reference`](../packages/context/file-reference) | [`file-reference-local`](../packages/context/file-reference-local) | - | - | The interface returns path-only completion candidates within the addressed Agent cwd through its unary Remote contract; providers own namespace access and ranking without reading file contents. |
 | `ctx.sessionReferenceResolver` | `core` | [`session-reference`](../packages/context/session-reference) | - | - | - | Projects bounded current-surface conversation snapshots into durable untrusted message context; host adapters own mention syntax. |
 | `ctx.sessionTitle` | `seam` | [`session-title`](../packages/session/session-title) | [`session-title-first-prompt-llm`](../packages/session/session-title-first-prompt-llm), [`session-title-all-prompts-llm`](../packages/session/session-title-all-prompts-llm) | - | - | Owns the deterministic fallback, latest-title fold, and sole optional asynchronous provider registration. |
+| `ctx.memory` | `seam` | [`memory`](../packages/memory/memory) | [`memory-local`](../packages/memory/memory-local) | [`memory-prompt`](../packages/memory/memory-prompt), [`memory-remote`](../packages/memory/memory-remote) | `memoryPipelineStore`, `memoryMaintenance` | Exposes profile controls, immutable generation reads, lexical recall, explicit memory requests, quarantine management, and reset without exposing pipeline state. |
+| `ctx.memoryPipelineStore` | `seam` | [`memory-pipeline-store`](../packages/memory/memory-pipeline-store) | [`memory-local`](../packages/memory/memory-local) | [`memory-scheduler`](../packages/memory/memory-scheduler) | [`memory`](../packages/memory/memory) | Owns durable claims, leases, audited attempts, staging workspaces, generation validation, fenced publication, recovery, and pruning behind opaque handles. |
+| `ctx.memoryMaintenance` | `seam` | [`memory-maintenance`](../packages/memory/memory-maintenance) | [`memory-scheduler`](../packages/memory/memory-scheduler) | [`memory-maintenance-triggers`](../packages/memory/memory-maintenance-triggers) | `memoryPipelineStore` | Coordinates discovery and model work through the private store; triggers only wake or drain the scheduler and never access memory storage. |
 | `ctx.systemPrompt` | `core` | [`system-prompt`](../packages/core/system-prompt) | - | [`agent-loop`](../packages/core/agent-loop), [`tools`](../packages/core/tools), [`tool-fs`](../packages/fs/tool-fs), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-web`](../packages/web/tool-web) | - | Collects prompt sections and model-facing tool schemas for each step. |
 | `ctx.tools` | `core` | [`tools`](../packages/core/tools) | - | [`agent-loop`](../packages/core/agent-loop), [`tool-ask-user`](../packages/interaction/tool-ask-user), [`tool-bash`](../packages/shell/tool-bash), [`tool-cordis`](../packages/extensions/tool-cordis), [`tool-fs`](../packages/fs/tool-fs), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-skill`](../packages/skill/tool-skill), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-todo`](../packages/todo/tool-todo), [`tool-web`](../packages/web/tool-web) | - | Registers capabilities, owns Code Mode transport, and routes calls through pre-policy, monotonic guards, around dispatch, post-policy, and final-result observation. |
 | `ctx.userQuestions` | `seam` | [`user-questions`](../packages/interaction/user-questions) | - | [`tool-ask-user`](../packages/interaction/tool-ask-user) | - | UI front ends provide the active human-answer provider; tool-ask-user pauses a tool call on the provider-neutral ask() promise. |
@@ -467,6 +518,10 @@ flowchart LR
 | `ctx.fs` | `seam` | [`fs`](../packages/fs/fs) | [`fs-local`](../packages/fs/fs-local), [`fs-sandbox`](../packages/fs/fs-sandbox), [`fs-e2b`](../packages/e2b/fs-e2b) | [`tool-fs`](../packages/fs/tool-fs) | [`fs-observation-policy`](../packages/fs/fs-observation-policy) | tool-fs executes read/write/edit through ctx.fs; fs-sandbox fences mutations by the shared sandbox mode; fs-observation-policy contributes observed-state checks through the fs/* event gate. |
 | `ctx.compaction` | `seam` | [`compaction`](../packages/compaction/compaction) | [`compaction-basic`](../packages/compaction/compaction-basic) | [`compaction-basic`](../packages/compaction/compaction-basic) | - | The basic backend consumes post-step pressure and request-error recovery events; there is no model-facing compact tool. |
 | `ctx.subagents` | `seam` | [`subagent`](../packages/subagent/subagent) | [`subagent-spawn-in-process`](../packages/subagent/subagent-spawn-in-process), [`subagent-fork-in-process`](../packages/subagent/subagent-fork-in-process), [`subagent-acp`](../packages/subagent/subagent-acp), [`subagent-codex`](../packages/subagent/subagent-codex), [`subagent-claude-code`](../packages/subagent/subagent-claude-code), [`subagent-dsh-sdk`](../packages/subagent/subagent-dsh-sdk) | [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-subagent-control`](../packages/subagent/tool-subagent-control), [`tool-ralph`](../packages/workflow/tool-ralph) | - | Providers implement transports; the service also owns optional Activation-based continuation orchestration, tool-subagent selects one-shot or continuable delegation, tool-subagent-control delivers follow-ups, and tool-ralph requires one fresh structured-output route. |
+| `ctx.codexStructuredRunner` | `seam` | [`codex-structured-runner`](../packages/subagent/codex-structured-runner) | [`subagent-codex`](../packages/subagent/subagent-codex) | [`memory-scheduler`](../packages/memory/memory-scheduler) | - | The provider prepares an immutable app-server request; the memory scheduler persists it before dispatch and validates the JSON result before applying it. |
+| `ctx.taskContract` | `core` | [`experimental-task-contract`](../packages/experimental/task-contract) | - | [`experimental-final-completeness-gate`](../packages/experimental/final-completeness-gate), [`experimental-progress-integrity-observer`](../packages/experimental/progress-integrity-observer), [`experimental-task-execution-control`](../packages/experimental/task-execution-control) | - | Replays claimed user input, current requirement versions and the latest formal plan approval independently of compaction; validates add, revise and cancel batches before CAS append. |
+| `ctx.progressIntegrityObserver` | `core` | [`experimental-progress-integrity-observer`](../packages/experimental/progress-integrity-observer) | - | [`experimental-task-execution-control`](../packages/experimental/task-execution-control) | - | Classifies progress only after exact repeated outcomes, consecutive failures, or unchanged A/B alternation; ordinary Step count never triggers it. |
+| `ctx.taskExecutionControl` | `core` | [`experimental-task-execution-control`](../packages/experimental/task-execution-control) | - | [`experimental-final-completeness-gate`](../packages/experimental/final-completeness-gate), [`experimental-progress-integrity-observer`](../packages/experimental/progress-integrity-observer) | - | Coordinates repair budgets, holds, plan-based release and durable dispatch receipts at the existing tool execution point. It makes no model call and Shadow is inert. |
 | `ctx.agentTeams` | `core` | `agent-team` | - | `tool-agent-team` | - | Owns the implicit-root roster, durable peer mailbox, shared task DAG, and continuable-child lifecycle; tool-agent-team contributes the scoped model policy and controls. |
 | `ctx.jobs` | `seam` | [`jobs`](../packages/jobs/jobs) | [`jobs-local`](../packages/jobs/jobs-local) | [`tool-bash`](../packages/shell/tool-bash), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-jobs`](../packages/jobs/tool-jobs) | - | Producers (background bash, PTY sends, and subagent delegations) register running work; tool-jobs is the model-facing controller that reads, lists, and kills it; jobs-local is the process-local registry. |
 | `ctx.web` | `seam` | [`web`](../packages/web/web) | [`web-search-exa`](../packages/web/web-search-exa), [`web-search-perplexity`](../packages/web/web-search-perplexity), [`web-search-deepseek`](../packages/web/web-search-deepseek), [`web-fetch-http`](../packages/web/web-fetch-http) | [`tool-web`](../packages/web/tool-web) | - | Search and fetch providers register into one ctx.web seam; tool-web owns the stable model-facing names. |

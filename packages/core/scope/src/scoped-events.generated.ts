@@ -8,15 +8,18 @@
 type ScopedSubjectResolver = (args: readonly unknown[]) => unknown
 
 const scopedSubjectResolvers: Readonly<Record<string, ScopedSubjectResolver | null>> = Object.freeze({
+  'agent/assistant-delivery': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/created': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/disposed': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/error': args => (args[0] as Record<string, unknown>)['agent'],
+  'agent/final-candidate': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/inbox/claimed': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/inbox/discarded': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/inbox/inserted': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/pre-step': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/request': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/request-error': args => (args[0] as Record<string, unknown>)['agent'],
+  'agent/request-starting': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/session-start': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/status': args => (args[0] as Record<string, unknown>)['agent'],
   'agent/turn-stopping': args => (args[0] as Record<string, unknown>)['agent'],
@@ -30,6 +33,7 @@ const scopedSubjectResolvers: Readonly<Record<string, ScopedSubjectResolver | nu
   'subagent/start': null,
   'system-prompt/assemble': args => (args[1] as Record<string, unknown>)['scope'],
   'tools/code-dispatch-log': args => (args[0] as Record<string, unknown>)['agent'],
+  'tools/dispatch-ready': args => (args[0] as Record<string, unknown>)['agent'],
   'tools/execute': args => (args[0] as Record<string, unknown>)['agent'],
   'tools/post-execute': args => (args[0] as Record<string, unknown>)['agent'],
   'tools/pre-execute': args => (args[0] as Record<string, unknown>)['agent'],

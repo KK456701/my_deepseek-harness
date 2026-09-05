@@ -1,0 +1,8 @@
+{
+  "steps": [
+    {
+      "op": "prompt",
+      "text": "What is A, and what is B?"
+    }
+  ]
+}

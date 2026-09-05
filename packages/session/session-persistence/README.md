@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 Session persistence is a capability seam. The abstract `SessionPersistence` service (`ctx.sessionPersistence`) is its Service Definition. It requires a persistence backend to store, reload, and list sessions durably without defining the storage implementation. The seam follows the `dsh-shell` roles ([capability seams](../../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)): this package owns the Service Definition, a sibling package owns the Service Provider, and Consumers inject the service.
 
+First-party interactive persistence providers own `interactive` and `subagent` Sessions. Capability-private `maintenance` Sessions are rejected by their direct API and ignored by their event coordinator; the owning capability must provide a separate durable audit log. This prevents ordinary Session listing, search, resume, export, and retention policy from exposing maintenance model calls.
+
 The persisted unit IS the existing `SessionEvent` (event-sourced model — the log is the single source of truth), so there is no parallel "persisted message" type. Metadata that is NOT replayable conversation state (format version, cwd, lineage, seed boundary, origin, delegation depth) travels separately as `SessionHeader`, owned by `dsh-session` and re-exported here.
 
 ## Service API (`ctx.sessionPersistence`)

@@ -60,7 +60,7 @@ function producer(overrides: Partial<Omit<JobStart, 'run'> & JobHooks> = {}) {
   let settle!: (outcome: JobOutcome) => void
   let reject!: (error: unknown) => void
   const cancels: (string | undefined)[] = []
-  const { kind = 'bash', label = 'sleep 60', owner, outputLimitBytes, ...hookOverrides } = overrides
+  const { kind = 'bash', label = 'sleep 60', owner, outputLimitBytes, visibility, ...hookOverrides } = overrides
   const hooks: JobHooks = {
     cancel(reason) { cancels.push(reason) },
     done: new Promise<JobOutcome>((res, rej) => { settle = res; reject = rej }),
@@ -71,6 +71,7 @@ function producer(overrides: Partial<Omit<JobStart, 'run'> & JobHooks> = {}) {
     label,
     ...owner !== undefined ? { owner } : {},
     ...outputLimitBytes !== undefined ? { outputLimitBytes } : {},
+    ...visibility !== undefined ? { visibility } : {},
     run: () => hooks,
   }
   return { spec, settle, reject, cancels }
@@ -191,6 +192,34 @@ describe('LocalJobRegistry.start', () => {
       .toThrow('background job limit reached for this owner (limit: 10)')
     expect(run).not.toHaveBeenCalled()
     for (const job of live) job.settle({ status: 'completed' })
+  })
+
+  it('keeps internal lifecycle jobs out of every public operation and active bucket', async () => {
+    const ctx = await harness({ maxConcurrentJobsPerOwner: 1 })
+    const internal = producer({ visibility: 'internal' })
+    const changed = vi.fn()
+    const done = vi.fn()
+    ctx.jobs.onJobsChanged(changed)
+    ctx.jobs.onJobDone(done)
+
+    const id = ctx.jobs.start(internal.spec)
+
+    expect(ctx.jobs.list()).toEqual([])
+    expect(() => ctx.jobs.get(id)).toThrow(`unknown job ${id}`)
+    expect(() => ctx.jobs.read(id)).toThrow(`unknown job ${id}`)
+    expect(() => ctx.jobs.kill(id)).toThrow(`unknown job ${id}`)
+    await expect(ctx.jobs.wait(id, 1)).rejects.toThrow(`unknown job ${id}`)
+    expect(changed).not.toHaveBeenCalled()
+    const visible = producer()
+    expect(() => ctx.jobs.start(visible.spec)).not.toThrow()
+    changed.mockClear()
+
+    internal.settle({ status: 'completed' })
+    await tick()
+    expect(changed).not.toHaveBeenCalled()
+    expect(done).not.toHaveBeenCalled()
+    expect((ctx.jobs as unknown as { store: Map<JobId, unknown> }).store.has(id)).toBe(false)
+    visible.settle({ status: 'completed' })
   })
 
   it('rejects before producer start and id allocation, then admits immediately after settlement', async () => {

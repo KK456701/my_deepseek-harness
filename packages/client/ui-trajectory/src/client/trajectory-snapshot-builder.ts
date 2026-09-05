@@ -182,6 +182,8 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
     const finalized: ConversationNode[] = []
     const eventLocations = new Map<number, TrajectoryConversationViewNode['location']>()
     const requests: RequestView[] = []
+    const memoryContexts: NonNullable<TrajectorySnapshot['memoryContexts']>[number][] = []
+    const records: NonNullable<TrajectorySnapshot['records']>[number][] = []
     const boundaries: { seq: number; time: number }[] = []
     const turnEndings: { turn: number; time: number; error?: string }[] = []
     const callSchemas = new Map<string, ToolSchema>()
@@ -193,6 +195,8 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
 
     for (const contribution of this.contributions) {
       const data = contribution.data
+      if (data.kind === 'record') { records.push(data.record); continue }
+      if (data.kind === 'memory-context') { memoryContexts.push(data.memory); continue }
       if (data.kind === 'request-header') {
         previousHeader = data.header
         previousTools = indexTools(data.header.prompt.tools)
@@ -242,6 +246,14 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
 
     requests.sort((left, right) => left.startSeq - right.startSeq)
     interruptCompactions(requests, boundaries)
+    for (const [index, record] of records.entries()) {
+      if (record.cell.operationState !== 'running' || !boundaries.some(boundary => boundary.seq > record.seq)) continue
+      records[index] = { ...record, cell: { ...record.cell, operationState: 'error',
+        text: `${record.cell.text} · 已中断／结果未记录`,
+        detailSections: record.cell.detailSections?.map(section => section.id === 'status'
+          ? { ...section, content: `会话已恢复；此调用没有终态记录，不能推断成功。\n${section.content}` } : section) ?? [],
+      } }
+    }
     applyTurnErrors(requests, turnEndings)
     finalized.sort((left, right) => left.seq - right.seq)
     const eventNodes = finalized
@@ -252,6 +264,8 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
       callSchemas,
       partial,
       runningCalls,
+      ...memoryContexts.length === 0 ? {} : { memoryContexts },
+      ...records.length === 0 ? {} : { records },
     }
   }
 

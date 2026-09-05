@@ -32,6 +32,18 @@ const SNAPSHOT = {
   ],
 } as unknown as Snapshot
 
+const CATEGORY_SNAPSHOT = {
+  entries: [
+    { entryId: 'tool', moduleName: '@deepseek-ai/dsh-tool-fs', enabled: true, fiberPhase: 'active' },
+    { entryId: 'agent', moduleName: '@deepseek-ai/dsh-agent-loop', enabled: true, fiberPhase: 'active' },
+    { entryId: 'model', moduleName: '@deepseek-ai/dsh-llm-deepseek', enabled: true, fiberPhase: 'active' },
+    { entryId: 'session', moduleName: '@deepseek-ai/dsh-session-persistence-jsonl', enabled: true, fiberPhase: 'active' },
+    { entryId: 'interface', moduleName: '@deepseek-ai/dsh-client-ui-tool', enabled: true, fiberPhase: 'active' },
+    { entryId: 'runtime', moduleName: '@deepseek-ai/cordis-plugin-timer', enabled: true, fiberPhase: 'active' },
+    { entryId: 'other', moduleName: './local-plugin.js', enabled: true, fiberPhase: 'active' },
+  ],
+} as unknown as Snapshot
+
 describe('PluginInventorySettingsTab', () => {
   it('renders runtime status only for enabled plugins', async () => {
     const deferred = Promise.withResolvers<Snapshot>()
@@ -93,6 +105,43 @@ describe('PluginInventorySettingsTab', () => {
     fireEvent.change(search, { target: { value: 'not-a-plugin' } })
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
     expect(screen.getByText(en.emptySearch)).toBeTruthy()
+  })
+
+  it('filters named categories together with search and labels plugin details', async () => {
+    const view = render(<PluginInventorySettingsTab {...props(async () => CATEGORY_SNAPSHOT)} />)
+    await screen.findByRole('searchbox', { name: en.search })
+
+    expect(screen.getByRole('group', { name: en.categories })).toBeTruthy()
+    for (const label of [
+      en.categoryAll,
+      en.categoryTools,
+      en.categoryAgents,
+      en.categoryModelContext,
+      en.categorySessions,
+      en.categoryInterface,
+      en.categoryRuntime,
+      en.categoryOther,
+    ]) expect(screen.getByRole('button', { name: label })).toBeTruthy()
+
+    const tools = screen.getByRole('button', { name: en.categoryTools })
+    fireEvent.click(tools)
+    expect(tools.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByText('tool-fs')).toBeTruthy()
+    expect(view.container.querySelector('[data-plugin-count]')?.textContent).toBe('1')
+    expect(view.container.querySelector('[data-plugin-category="tools"]')).toBeTruthy()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: en.search }), {
+      target: { value: 'not-tool-fs' },
+    })
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+    expect(screen.getByText(en.emptySearch)).toBeTruthy()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: en.search }), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: en.categoryInterface }))
+    fireEvent.click(screen.getByRole('button', { name: 'ui-tool, Mounted, Enabled' }))
+    expect(screen.getByText(en.category)).toBeTruthy()
+    expect(screen.getAllByText(en.categoryInterface)).toHaveLength(2)
   })
 
   it('shows a generic failure and retries into the empty state', async () => {

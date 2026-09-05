@@ -8,5 +8,8 @@ This group contains prototypes and internal-only Cordis plugins that use the rep
 |---|---|---|
 | `agent-team/` | Implicit-root Agent Teams roster, durable peer mailbox, shared task DAG, and runtime coordination | `ctx.agentTeams` |
 | `tool-agent-team/` | Scoped model-facing Agent Teams tools and collaboration guidance | — |
+| `task-contract/` | Event-sourced current requirements and before-step requirement change parsing | `ctx.taskContract` |
+| `final-completeness-gate/` | Background Shadow review and durable enforced final-answer submission | `ctx.finalCompletenessGate` |
+| `progress-integrity-observer/` | Background Step progress and alignment classification | `ctx.progressIntegrityObserver` |
 
 The [subtree rules](AGENTS.md) define dependency isolation, release exclusion, and promotion.

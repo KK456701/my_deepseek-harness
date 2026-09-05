@@ -26,6 +26,7 @@ export function meta(id: string, cwd?: string): SessionHeader {
     version: SESSION_FORMAT_VERSION,
     id: SessionId(id),
     createdAt: 1000,
+    purpose: 'interactive',
     ...cwd !== undefined ? { cwd } : {},
   }
 }

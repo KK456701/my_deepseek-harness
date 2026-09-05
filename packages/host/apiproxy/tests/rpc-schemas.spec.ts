@@ -138,8 +138,13 @@ describe('sessions domain schemas', () => {
   it('validates ids, summaries, and the event passthrough envelope', () => {
     expect(sessionIdSchema.parse('s1')).toBe('s1')
     expect(() => sessionIdSchema.parse('')).toThrow()
-    expect(sessionSummarySchema.parse({ sessionId: 's1', updatedAt: 1, running: false, blank: true })).toMatchObject({ sessionId: 's1', blank: true })
-    expect(sessionSummarySchema.parse({ sessionId: 's1', updatedAt: 1, running: true, blank: false, parentSessionId: 'p', cwd: '/x' }).cwd).toBe('/x')
+    expect(sessionSummarySchema.parse({
+      sessionId: 's1', updatedAt: 1, running: false, blank: true, purpose: 'interactive',
+    })).toMatchObject({ sessionId: 's1', blank: true })
+    expect(sessionSummarySchema.parse({
+      sessionId: 's1', updatedAt: 1, running: true, blank: false,
+      parentSessionId: 'p', cwd: '/x', purpose: 'interactive',
+    }).cwd).toBe('/x')
     // blank is mandatory: a summary without it fails the parse.
     expect(() => sessionSummarySchema.parse({ sessionId: 's1', updatedAt: 1, running: false })).toThrow()
     const event = sessionEventSchema.parse({
@@ -515,8 +520,8 @@ describe('events frame schemas', () => {
 
   it('accepts every host frame branch', () => {
     const frames = [
-      { type: 'host/session-added', sessionId: 's', blank: true, parentSessionId: 'p' },
-      { type: 'host/session-added', sessionId: 's', blank: true },
+      { type: 'host/session-added', sessionId: 's', blank: true, parentSessionId: 'p', purpose: 'interactive' },
+      { type: 'host/session-added', sessionId: 's', blank: true, purpose: 'interactive' },
       { type: 'host/session-removed', sessionId: 's' },
       { type: 'host/session-status', sessionId: 's', running: true },
       { type: 'host/agent-error', sessionId: 's', message: 'boom' },

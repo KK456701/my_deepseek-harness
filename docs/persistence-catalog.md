@@ -90,7 +90,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }[T]
 ```
 
-Sources: [`packages/core/session/src/types.ts:340`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:347`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:376`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:408`](../packages/core/session/src/types.ts)
+Sources: [`packages/core/session/src/types.ts:362`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:369`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:398`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:430`](../packages/core/session/src/types.ts)
 
 ## Events
 
@@ -215,7 +215,7 @@ Source: [`packages/interaction/user-approval/src/index.ts:67`](../packages/inter
 
 Types: [StreamChunk](subsystems/llm-streaming.md)
 
-Source: [`packages/core/session/src/types.ts:266`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:277`](../packages/core/session/src/types.ts)
 
 <a id="assistantmessage--surface"></a>
 
@@ -237,7 +237,7 @@ Source: [`packages/core/session/src/types.ts:266`](../packages/core/session/src/
 
 Types: [TokenUsage](subsystems/llm-streaming.md)
 
-Source: [`packages/core/session/src/types.ts:277`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:288`](../packages/core/session/src/types.ts)
 
 ### `command/*`
 
@@ -409,6 +409,152 @@ Source: [`packages/compaction/compaction/src/types.ts:33`](../packages/compactio
 
 Source: [`packages/feedback/command-feedback/src/index.ts:62`](../packages/feedback/command-feedback/src/index.ts)
 
+### `final-draft/*`
+
+<a id="final-draftcandidate--log-only"></a>
+
+#### `final-draft/candidate` — log-only
+
+```ts persistence-catalog
+/** Seals the complete staged answer, finish metadata, stream membership, and usage before final review. */
+'final-draft/candidate': { candidateId: CandidateId; basis: CandidateBasis; message: AssistantMessage; finish: AssistantCandidateFinish; chunkSeqs: number[]; usage?: TokenUsage }
+```
+
+Types: [TokenUsage](subsystems/llm-streaming.md)
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:141`](../packages/experimental/final-completeness-gate/src/types.ts)
+
+<a id="final-draftchunk--log-only"></a>
+
+#### `final-draft/chunk` — log-only
+
+```ts persistence-catalog
+/** Appends one ordered provider stream chunk to the staged candidate without exposing it as an Assistant message. */
+'final-draft/chunk': { candidateId: CandidateId; chunk: StreamChunk }
+```
+
+Types: [StreamChunk](subsystems/llm-streaming.md)
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:130`](../packages/experimental/final-completeness-gate/src/types.ts)
+
+<a id="final-draftdecision--log-only"></a>
+
+#### `final-draft/decision` — log-only
+
+```ts persistence-catalog
+/** Records the durable delivery state and program-derived remediation action for one staged candidate. */
+'final-draft/decision': {
+  candidateId: CandidateId
+  status: 'awaiting_user' | 'awaiting_commit' | 'committed' | 'rejected' | 'superseded' | 'aborted'
+  action?: ReviewDeliveryAction
+  reason?: string
+  delivery?: { replyAllowed: boolean; turnEnds: boolean; taskCompleted: boolean }
+}
+```
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:147`](../packages/experimental/final-completeness-gate/src/types.ts)
+
+<a id="final-draftend--log-only"></a>
+
+#### `final-draft/end` — log-only
+
+```ts persistence-catalog
+/** Closes one staging transaction after commit, rejection, supersession, abort, or recovery cleanup. */
+'final-draft/end': { candidateId: CandidateId }
+```
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:155`](../packages/experimental/final-completeness-gate/src/types.ts)
+
+<a id="final-draftreview-result--log-only"></a>
+
+#### `final-draft/review-result` — log-only
+
+```ts persistence-catalog
+/** Records the parsed Reviewer result, raw provider output and usage, or the terminal transport or validation error. */
+'final-draft/review-result': { candidateId: CandidateId; attemptId: ReviewAttemptId; result?: FinalReviewResult; rawOutput: ContentBlock[]; usage?: TokenUsage; error?: string }
+```
+
+Types: [ContentBlock](subsystems/core.md) · [TokenUsage](subsystems/llm-streaming.md)
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:145`](../packages/experimental/final-completeness-gate/src/types.ts)
+
+<a id="final-draftreview-start--log-only"></a>
+
+#### `final-draft/review-start` — log-only
+
+```ts persistence-catalog
+/** Starts one Reviewer attempt against the named candidate and exact requirement snapshot. */
+'final-draft/review-start': { candidateId: CandidateId; attemptId: ReviewAttemptId; contract: TaskContractSnapshot; provider: string; model: string; maxTokens: number }
+```
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:143`](../packages/experimental/final-completeness-gate/src/types.ts)
+
+<a id="final-draftstart--log-only"></a>
+
+#### `final-draft/start` — log-only
+
+```ts persistence-catalog
+/** Opens one Enforce-mode staging transaction with the revisions and model route that must remain current. */
+'final-draft/start': { candidateId: CandidateId; basis: CandidateBasis; provider: string; model: string }
+```
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:128`](../packages/experimental/final-completeness-gate/src/types.ts)
+
+### `final-review/*`
+
+<a id="final-reviewevidence-access--log-only"></a>
+
+#### `final-review/evidence-access` — log-only
+
+```ts persistence-catalog
+/** Records a Reviewer-owned lookup of the frozen candidate evidence prefix. */
+'final-review/evidence-access': {
+  candidateId: CandidateId
+  attemptId: ReviewAttemptId
+  callId: string
+  toolCallId: string
+  operation: 'search' | 'read'
+  eventIds: readonly number[]
+}
+```
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:132`](../packages/experimental/final-completeness-gate/src/types.ts)
+
+<a id="final-reviewinput--log-only"></a>
+
+#### `final-review/input` — log-only
+
+```ts persistence-catalog
+/** Freezes the exact requirement, plan, evidence, and candidate material reviewed for one staged answer. */
+'final-review/input': { candidateId: CandidateId; input: FrozenReviewInput }
+```
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:122`](../packages/experimental/final-completeness-gate/src/types.ts)
+
+<a id="final-reviewshadow-result--log-only"></a>
+
+#### `final-review/shadow-result` — log-only
+
+```ts persistence-catalog
+/** Records the Shadow review response, provider output and usage, or the terminal transport or validation error. */
+'final-review/shadow-result': { candidateId: CandidateId; result?: FinalReviewResult; rawOutput: ContentBlock[]; usage?: TokenUsage; error?: string }
+```
+
+Types: [ContentBlock](subsystems/core.md) · [TokenUsage](subsystems/llm-streaming.md)
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:126`](../packages/experimental/final-completeness-gate/src/types.ts)
+
+<a id="final-reviewshadow-start--log-only"></a>
+
+#### `final-review/shadow-start` — log-only
+
+```ts persistence-catalog
+/** Starts a non-blocking Shadow review and records the candidate, route, and requirement snapshot it evaluates. */
+'final-review/shadow-start': { candidateId: CandidateId; turn: number; message: AssistantMessage; contract: TaskContractSnapshot; provider: string; model: string }
+```
+
+Source: [`packages/experimental/final-completeness-gate/src/types.ts:124`](../packages/experimental/final-completeness-gate/src/types.ts)
+
 ### `goal/*`
 
 <a id="goalchange--log-only"></a>
@@ -476,6 +622,26 @@ Source: [`packages/hooks/hook-protocol/src/types.ts:31`](../packages/hooks/hook-
 
 ### `llm/*`
 
+<a id="llmaudited-call--log-only"></a>
+
+#### `llm/audited-call` — log-only
+
+```ts persistence-catalog
+/** Records usage and wall time for one audited capability-owned model call that does not produce an interactive Assistant Message. */
+'llm/audited-call': {
+  callId: AuditedLlmCallId
+  purpose: string
+  provider: string
+  model: string
+  durationMs: number
+  usage?: TokenUsage
+}
+```
+
+Types: [TokenUsage](subsystems/llm-streaming.md)
+
+Source: [`packages/core/session/src/types.ts:328`](../packages/core/session/src/types.ts)
+
 <a id="llmretry--log-only"></a>
 
 #### `llm/retry` — log-only
@@ -497,6 +663,19 @@ Source: [`packages/llm/llm-retry/src/types.ts:9`](../packages/llm/llm-retry/src/
 ```
 
 Source: [`packages/llm/llm-retry/src/types.ts:11`](../packages/llm/llm-retry/src/types.ts)
+
+### `memory/*`
+
+<a id="memorycontext--log-only"></a>
+
+#### `memory/context` — log-only
+
+```ts persistence-catalog
+/** Memory selection observed at a dispatched interactive request; contains no model input. */
+'memory/context': import('./types.ts').MemoryRequestContext
+```
+
+Source: [`packages/memory/memory/src/index.ts:107`](../packages/memory/memory/src/index.ts)
 
 ### `permission/*`
 
@@ -531,7 +710,86 @@ Source: [`packages/interaction/permission-presets/src/index.ts:50`](../packages/
 'plan/mode': { active: boolean }
 ```
 
-Source: [`packages/plan/plan-mode/src/index.ts:54`](../packages/plan/plan-mode/src/index.ts)
+Source: [`packages/plan/plan-mode/src/index.ts:55`](../packages/plan/plan-mode/src/index.ts)
+
+<a id="planreview-approved--log-only"></a>
+
+#### `plan/review-approved` — log-only
+
+```ts persistence-catalog
+/** User approval of the exact referenced plan, recorded after all live guards pass. */
+'plan/review-approved': { callId: CallId; reviewSeq: number }
+```
+
+Types: [CallId](subsystems/core.md)
+
+Source: [`packages/plan/plan-mode/src/index.ts:59`](../packages/plan/plan-mode/src/index.ts)
+
+<a id="planreview-start--log-only"></a>
+
+#### `plan/review-start` — log-only
+
+```ts persistence-catalog
+/** Exact proposed plan presented by a tool-owned approval interaction. */
+'plan/review-start': { callId: CallId; plan: string }
+```
+
+Types: [CallId](subsystems/core.md)
+
+Source: [`packages/plan/plan-mode/src/index.ts:57`](../packages/plan/plan-mode/src/index.ts)
+
+### `progress-integrity/*`
+
+<a id="progress-integrityobservation--log-only"></a>
+
+#### `progress-integrity/observation` — log-only
+
+```ts persistence-catalog
+/** Validated verdict plus the program-owned consecutive-no-progress count. */
+'progress-integrity/observation': {
+  version?: 2
+  requirementRevision?: number
+  inputRevision?: number
+  stale?: boolean
+  turn: number
+  step: number
+  verdict?: ProgressVerdict
+  consecutiveNoProgress?: number
+  rawOutput: ContentBlock[]
+  usage?: TokenUsage
+  error?: string
+  /** Legacy model-authored observation retained for old logs. */
+  observation?: unknown
+  taskId?: string
+}
+```
+
+Types: [ContentBlock](subsystems/core.md) · [TokenUsage](subsystems/llm-streaming.md)
+
+Source: [`packages/experimental/progress-integrity-observer/src/index.ts:75`](../packages/experimental/progress-integrity-observer/src/index.ts)
+
+<a id="progress-integritystart--log-only"></a>
+
+#### `progress-integrity/start` — log-only
+
+```ts persistence-catalog
+/** Freezes the requirement revision and selected execution evidence before dispatch. */
+'progress-integrity/start': {
+  version?: 2
+  turn: number
+  step: number
+  requirementRevision?: number
+  inputRevision?: number
+  evidenceEventIds?: readonly EventRef[]
+  provider: string
+  model: string
+  /** Legacy payload retained for read-only replay. */
+  contract?: TaskContractSnapshot
+  evidenceSeqs?: number[]
+}
+```
+
+Source: [`packages/experimental/progress-integrity-observer/src/index.ts:61`](../packages/experimental/progress-integrity-observer/src/index.ts)
 
 ### `request/*`
 
@@ -547,7 +805,7 @@ Source: [`packages/plan/plan-mode/src/index.ts:54`](../packages/plan/plan-mode/s
 'request/context': RequestContext
 ```
 
-Source: [`packages/core/session/src/types.ts:313`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:324`](../packages/core/session/src/types.ts)
 
 <a id="requestheader--log-only"></a>
 
@@ -561,7 +819,7 @@ Source: [`packages/core/session/src/types.ts:313`](../packages/core/session/src/
 'request/header': { header: EpochHeader; reason: RequestHeaderReason }
 ```
 
-Source: [`packages/core/session/src/types.ts:308`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:319`](../packages/core/session/src/types.ts)
 
 ### `sandbox/*`
 
@@ -636,7 +894,18 @@ Source: [`packages/schedule/schedule/src/types.ts:219`](../packages/schedule/sch
 'session/end-seed': Record<string, never>
 ```
 
-Source: [`packages/core/session/src/types.ts:336`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:358`](../packages/core/session/src/types.ts)
+
+<a id="sessionretained--log-only"></a>
+
+#### `session/retained` — log-only
+
+```ts persistence-catalog
+/** Retains an inspectable non-conversation record in session lists without inventing a Worker turn. It is not model input or execution authorization. */
+'session/retained': { reason: string }
+```
+
+Source: [`packages/core/session/src/types.ts:326`](../packages/core/session/src/types.ts)
 
 <a id="sessiontitle--log-only"></a>
 
@@ -678,7 +947,7 @@ Source: [`packages/session/session-title-llm/src/index.ts:43`](../packages/sessi
 'step/end': { turn: number; step: number }
 ```
 
-Source: [`packages/core/session/src/types.ts:256`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:267`](../packages/core/session/src/types.ts)
 
 <a id="stepstart--log-only"></a>
 
@@ -689,7 +958,7 @@ Source: [`packages/core/session/src/types.ts:256`](../packages/core/session/src/
 'step/start': { turn: number; step: number }
 ```
 
-Source: [`packages/core/session/src/types.ts:254`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:265`](../packages/core/session/src/types.ts)
 
 ### `subagent/*`
 
@@ -709,6 +978,301 @@ Source: [`packages/core/session/src/types.ts:254`](../packages/core/session/src/
 ```
 
 Source: [`packages/subagent/subagent/src/descriptor.ts:37`](../packages/subagent/subagent/src/descriptor.ts)
+
+### `task-contract/*`
+
+<a id="task-contractextraction-result--log-only"></a>
+
+#### `task-contract/extraction-result` — log-only
+
+```ts persistence-catalog
+/** Legacy parser result retained for read-only trajectory replay. */
+'task-contract/extraction-result': {
+  attemptId: string
+  baseRevision: number
+  rawOutput: readonly ContentBlock[]
+  extracted?: readonly unknown[]
+  usage?: TokenUsage
+  error?: string
+  response?: ExtractionResponseStats
+}
+```
+
+Types: [ContentBlock](subsystems/core.md) · [TokenUsage](subsystems/llm-streaming.md)
+
+Source: [`packages/experimental/task-contract/src/types.ts:193`](../packages/experimental/task-contract/src/types.ts)
+
+<a id="task-contractextraction-start--log-only"></a>
+
+#### `task-contract/extraction-start` — log-only
+
+```ts persistence-catalog
+/** Legacy parser request retained for read-only trajectory replay. */
+'task-contract/extraction-start': {
+  attemptId: string
+  baseRevision: number
+  sourceMessageIds: readonly MessageId[]
+  sourceMessages: readonly ContentBlock[][]
+  provider: string
+  model: string
+  maxTokens: number
+}
+```
+
+Types: [ContentBlock](subsystems/core.md)
+
+Source: [`packages/experimental/task-contract/src/types.ts:183`](../packages/experimental/task-contract/src/types.ts)
+
+<a id="task-contractinput--log-only"></a>
+
+#### `task-contract/input` — log-only
+
+```ts persistence-catalog
+/** Claimed direct-user input saved before requirement-change parsing. */
+'task-contract/input': { turn: number; messages: readonly { id: MessageId; content: readonly ContentBlock[] }[] }
+```
+
+Types: [ContentBlock](subsystems/core.md)
+
+Source: [`packages/experimental/task-contract/src/types.ts:173`](../packages/experimental/task-contract/src/types.ts)
+
+<a id="task-contractinput-admitted--log-only"></a>
+
+#### `task-contract/input-admitted` — log-only
+
+```ts persistence-catalog
+/** Exact claimed messages subsequently appended to Worker history. */
+'task-contract/input-admitted': { turn: number; messageIds: readonly MessageId[] }
+```
+
+Source: [`packages/experimental/task-contract/src/types.ts:171`](../packages/experimental/task-contract/src/types.ts)
+
+<a id="task-contractmodel-application--log-only"></a>
+
+#### `task-contract/model-application` — log-only
+
+```ts persistence-catalog
+/** Runtime decision after validation, distinct from model-authored output. */
+'task-contract/model-application': { callId: AuditedLlmCallId; eventSeq: number; eventType: string; decision: JsonValue }
+```
+
+Source: [`packages/experimental/task-contract/src/audit.ts:60`](../packages/experimental/task-contract/src/audit.ts)
+
+<a id="task-contractmodel-assessment--log-only"></a>
+
+#### `task-contract/model-assessment` — log-only
+
+```ts persistence-catalog
+/** Consumer validation is independent from successful model transport. */
+'task-contract/model-assessment': {
+  callId: AuditedLlmCallId
+  status: 'validated' | 'failed' | 'stale'
+  result?: JsonValue
+  error?: string
+}
+```
+
+Source: [`packages/experimental/task-contract/src/audit.ts:62`](../packages/experimental/task-contract/src/audit.ts)
+
+<a id="task-contractmodel-chunk--log-only"></a>
+
+#### `task-contract/model-chunk` — log-only
+
+```ts persistence-catalog
+/** Actual provider output in stream order, excluded from Worker message history. */
+'task-contract/model-chunk': { callId: AuditedLlmCallId; chunk: StreamChunk }
+```
+
+Types: [StreamChunk](subsystems/llm-streaming.md)
+
+Source: [`packages/experimental/task-contract/src/audit.ts:56`](../packages/experimental/task-contract/src/audit.ts)
+
+<a id="task-contractmodel-dispatch--log-only"></a>
+
+#### `task-contract/model-dispatch` — log-only
+
+```ts persistence-catalog
+/** Marks entry into the prepared stream, not merely prompt preparation. */
+'task-contract/model-dispatch': { callId: AuditedLlmCallId }
+```
+
+Source: [`packages/experimental/task-contract/src/audit.ts:54`](../packages/experimental/task-contract/src/audit.ts)
+
+<a id="task-contractmodel-not-dispatched--log-only"></a>
+
+#### `task-contract/model-not-dispatched` — log-only
+
+```ts persistence-catalog
+/** Prepared requests cancelled or rejected before entering the provider stream. */
+'task-contract/model-not-dispatched': { callId: AuditedLlmCallId; error: string }
+```
+
+Source: [`packages/experimental/task-contract/src/audit.ts:58`](../packages/experimental/task-contract/src/audit.ts)
+
+<a id="task-contractmodel-request--log-only"></a>
+
+#### `task-contract/model-request` — log-only
+
+```ts persistence-catalog
+/** Exact prepared auxiliary request; separate from the Worker's request/header. */
+'task-contract/model-request': {
+  formatVersion: 1
+  callId: AuditedLlmCallId
+  request: JsonValue
+  metadata?: AuxiliaryRequestMetadata
+}
+```
+
+Source: [`packages/experimental/task-contract/src/audit.ts:47`](../packages/experimental/task-contract/src/audit.ts)
+
+<a id="task-contractmodel-response--log-only"></a>
+
+#### `task-contract/model-response` — log-only
+
+```ts persistence-catalog
+/** Retains the actual auxiliary stream independently of downstream JSON validation. */
+'task-contract/model-response': {
+  callId: AuditedLlmCallId
+  rawOutput: ContentBlock[]
+  usage?: TokenUsage
+  response: ExtractionResponseStats
+}
+```
+
+Types: [ContentBlock](subsystems/core.md) · [TokenUsage](subsystems/llm-streaming.md)
+
+Source: [`packages/experimental/task-contract/src/audit.ts:69`](../packages/experimental/task-contract/src/audit.ts)
+
+<a id="task-contractupdate--log-only"></a>
+
+#### `task-contract/update` — log-only
+
+```ts persistence-catalog
+/** Atomically advances the requirement ledger. Legacy batches omit formatVersion. */
+'task-contract/update': {
+  formatVersion?: 3
+  baseRevision: number
+  revision: number
+  sourceMessageIds: readonly MessageId[]
+  updates: readonly RequirementUpdate[]
+}
+```
+
+Source: [`packages/experimental/task-contract/src/types.ts:175`](../packages/experimental/task-contract/src/types.ts)
+
+### `task-execution/*`
+
+<a id="task-executionauthorization--log-only"></a>
+
+#### `task-execution/authorization` — log-only
+
+```ts persistence-catalog
+/** Legacy classifier record; new runtimes never append it. */
+'task-execution/authorization': { callId: CallId; decision: 'allow' | 'ask'; reason: string; sourceMessageIds: string[] }
+```
+
+Types: [CallId](subsystems/core.md)
+
+Source: [`packages/experimental/task-execution-control/src/types.ts:62`](../packages/experimental/task-execution-control/src/types.ts)
+
+<a id="task-executionauthorization-start--log-only"></a>
+
+#### `task-execution/authorization-start` — log-only
+
+```ts persistence-catalog
+/** Legacy classifier dispatch; new runtimes never append it. */
+'task-execution/authorization-start': { callId: CallId; rootCallId: CallId; name: string; argumentsJson: string; turn: number; taskRevision: number }
+```
+
+Types: [CallId](subsystems/core.md)
+
+Source: [`packages/experimental/task-execution-control/src/types.ts:64`](../packages/experimental/task-execution-control/src/types.ts)
+
+<a id="task-executiondispatch--log-only"></a>
+
+#### `task-execution/dispatch` — log-only
+
+```ts persistence-catalog
+/** Flushed intent before a tool body starts; a missing result means unknown outcome. */
+'task-execution/dispatch': {
+  incarnation: ExecutionIncarnation
+  callId: CallId
+  rootCallId: CallId
+  name: string
+  argumentsJson: string
+  requirementRevision?: number
+  inputRevision: number
+  /** Legacy fields retained for read-only logs. */
+  taskRevision?: number
+  taskId?: string
+}
+```
+
+Types: [CallId](subsystems/core.md)
+
+Source: [`packages/experimental/task-execution-control/src/types.ts:47`](../packages/experimental/task-execution-control/src/types.ts)
+
+<a id="task-executionresult--log-only"></a>
+
+#### `task-execution/result` — log-only
+
+```ts persistence-catalog
+/** Registry invocation settled, independently of whether it fulfilled a requirement. */
+'task-execution/result': { incarnation: ExecutionIncarnation; callId: CallId; isError: boolean }
+```
+
+Types: [CallId](subsystems/core.md)
+
+Source: [`packages/experimental/task-execution-control/src/types.ts:60`](../packages/experimental/task-execution-control/src/types.ts)
+
+<a id="task-executionstate--log-only"></a>
+
+#### `task-execution/state` — log-only
+
+```ts persistence-catalog
+/** Advances the Session execution restriction; only formal plan approval releases a hold. */
+'task-execution/state': { snapshot: TaskExecutionSnapshot }
+```
+
+Source: [`packages/experimental/task-execution-control/src/types.ts:45`](../packages/experimental/task-execution-control/src/types.ts)
+
+### `task-review/*`
+
+<a id="task-reviewtest-case--log-only"></a>
+
+#### `task-review/test-case` — log-only
+
+```ts persistence-catalog
+/** Non-conversation evaluation metadata; fixed materials never authorize Worker execution. */
+'task-review/test-case': {
+  version: 1
+  kind: 'reviewer' | 'full-on' | 'full-off'
+  caseId: string
+  title: string
+  materials?: import('@deepseek-ai/dsh-session/types').JsonValue
+  expected?: import('@deepseek-ai/dsh-session/types').JsonValue
+  faultInjection?: string
+  legacy?: boolean
+}
+```
+
+Source: [`packages/experimental/task-contract/src/types.ts:153`](../packages/experimental/task-contract/src/types.ts)
+
+<a id="task-reviewtest-result--log-only"></a>
+
+#### `task-review/test-result` — log-only
+
+```ts persistence-catalog
+/** Evaluation outcome, separate from model transport and task completion. */
+'task-review/test-result': {
+  caseId: string
+  status: 'passed' | 'failed' | 'failed-expectation'
+  actual?: import('@deepseek-ai/dsh-session/types').JsonValue
+  error?: string
+}
+```
+
+Source: [`packages/experimental/task-contract/src/types.ts:164`](../packages/experimental/task-contract/src/types.ts)
 
 ### `team/*`
 
@@ -782,7 +1346,7 @@ Source: [`packages/experimental/agent-team/src/types.ts:208`](../packages/experi
 
 Types: [TodoItem](subsystems/session.md)
 
-Source: [`packages/core/session/src/types.ts:303`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:314`](../packages/core/session/src/types.ts)
 
 ### `tool/*`
 
@@ -801,7 +1365,7 @@ Source: [`packages/core/session/src/types.ts:303`](../packages/core/session/src/
 
 Types: [CallId](subsystems/core.md)
 
-Source: [`packages/core/session/src/types.ts:283`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:294`](../packages/core/session/src/types.ts)
 
 <a id="toolcode-dispatch--log-only"></a>
 
@@ -876,7 +1440,7 @@ Source: [`packages/core/tools/src/types.ts:40`](../packages/core/tools/src/types
 }
 ```
 
-Source: [`packages/core/session/src/types.ts:295`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:306`](../packages/core/session/src/types.ts)
 
 ### `tool-workflow/*`
 
@@ -956,7 +1520,7 @@ Source: [`packages/workflow/tool-workflow/src/types.ts:47`](../packages/workflow
 
 Types: [TurnEndReason](subsystems/session.md)
 
-Source: [`packages/core/session/src/types.ts:252`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:263`](../packages/core/session/src/types.ts)
 
 <a id="turnstart--log-only"></a>
 
@@ -972,7 +1536,7 @@ Source: [`packages/core/session/src/types.ts:252`](../packages/core/session/src/
 'turn/start': { turn: number }
 ```
 
-Source: [`packages/core/session/src/types.ts:243`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:254`](../packages/core/session/src/types.ts)
 
 ### `user/*`
 
@@ -991,7 +1555,7 @@ Source: [`packages/core/session/src/types.ts:243`](../packages/core/session/src/
 'user/message': UserMessage
 ```
 
-Source: [`packages/core/session/src/types.ts:264`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:275`](../packages/core/session/src/types.ts)
 
 ### `web/*`
 

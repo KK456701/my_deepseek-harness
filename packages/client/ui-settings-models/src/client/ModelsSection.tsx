@@ -19,11 +19,32 @@ import { Button, IconPlusOutline16, Modal } from '@deepseek-ai/dsh-client-ui-pri
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
 import { deriveKeyRef, messageOf, protocolChoices, providerUsable } from './store.ts'
-import type { ModelsSettingsStore, ProviderRow } from './store.ts'
+import type { ModelsSettingsState, ModelsSettingsStore, ProviderRow } from './store.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import { ProviderEditor, type ProviderEditorProps } from './ProviderEditor.tsx'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
+
+/** Stable route id installed by the local Ollama onboarding profile. */
+export const OLLAMA_LOCAL_PROVIDER = 'ollama-local'
+
+/**
+ * Separate configured routes by where their inference runs.
+ *
+ * The route id, rather than a guessed loopback URL, is the durable ownership
+ * signal: a custom cloud gateway may also use a loopback endpoint.
+ * @param rows - configured provider rows from the settings snapshot.
+ * @returns the cloud routes and the configured local Ollama route.
+ */
+export function groupConfiguredProviders(rows: readonly ProviderRow[]): {
+  cloud: ProviderRow[]
+  ollama: ProviderRow[]
+} {
+  return {
+    cloud: rows.filter(row => row.entry.provider !== OLLAMA_LOCAL_PROVIDER),
+    ollama: rows.filter(row => row.entry.provider === OLLAMA_LOCAL_PROVIDER),
+  }
+}
 
 /** Injected dependencies of {@link ModelsSection} (slot `inject`). */
 export interface ModelsSectionInjected {
@@ -273,6 +294,7 @@ function Loaded({ injected }: { injected: ModelsSectionFace }): ReactNode {
   // step: whether the user already has a provider to talk to.
   const anyUsable = state.rows.some(providerUsable)
   const configured = state.rows.filter(row => row.configured)
+  const providerGroups = groupConfiguredProviders(configured)
   const addable = state.rows.filter(row => !row.configured && row.entry.settingsNs !== '')
   const addTarget = adding ? editing : undefined
   const addNamespace = addTarget === undefined ? undefined : state.namespaces.get(addTarget.settingsNs)
@@ -293,116 +315,72 @@ function Loaded({ injected }: { injected: ModelsSectionFace }): ReactNode {
             {providerCopy(t('savedProvider'), savedIdentity)}
           </p>
         )}
-      <ul className={styles['rows']}>
-        {configured.map((row) => {
-          const target = targetOf(row)
-          const namespace = state.namespaces.get(target.settingsNs)
-          /* v8 ignore next -- the join marks a row configured only when its namespace resolved */
-          if (namespace === undefined) return null
-          if (needsSetup(row, anyUsable) && !dismissedSetup.has(row.entry.provider)) {
-            // First-run posture: the provider exists but has no key — the
-            // setup card IS its presence on the page, until the user closes it.
-            return (
-              <li key={row.entry.provider} className={styles['setupCard']}>
-                {renderProviderEditor({
-                  target,
-                  namespace,
-                  schema,
-                  api,
-                  t,
-                  readOnly: !state.writable,
-                  onClose: (changed) => { closeSetup(changed, target) },
-                })}
-              </li>
-            )
-          }
-          const open = !adding && editing?.provider === row.entry.provider
-          const credentialConfigured = row.credential?.configured === true
-          const credentialMissing = !credentialConfigured
-            && row.apiKeyEnv !== undefined
-            && row.credential?.configured === false
-          return (
-            <li key={row.entry.provider} className={styles['rowCard']}>
-              <div className={styles['rowHead']}>
-                <span className={styles['rowIdentity']}>
-                  <span className={styles['rowName']}>{row.entry.displayName}</span>
-                  {/* Only the adapter can tell a hand-declared route from a
-                      shipped one it also has a stored profile for, so the tag
-                      follows its answer and stays off when it gives none. */}
-                  {row.entry.declared === true
-                    ? <span className={styles['rowTag']}>{t('customTag')}</span>
-                    : null}
-                  {credentialConfigured
-                    ? (
-                      <span
-                        className={`${styles['credentialDot']} ${styles['credentialDotConfigured']}`}
-                        role="img"
-                        aria-label={t('credentialConfigured')}
-                        title={t('credentialConfigured')}
-                      />
-                    )
-                    : credentialMissing
-                      ? (
-                        <span
-                          className={`${styles['credentialDot']} ${styles['credentialDotMissing']}`}
-                          role="img"
-                          aria-label={t('credentialMissing')}
-                          title={t('credentialMissing')}
-                        />
-                      )
-                      : null}
-                </span>
-                <span className={styles['rowActions']}>
-                  <button
-                    type="button"
-                    className={styles['secondaryButton']}
-                    aria-label={providerCopy(t('editProvider'), target)}
-                    onClick={() => {
-                      setSavedTarget(undefined)
-                      // One card at a time: leaving `declaring` set would show
-                      // the create card beside this editor, and closing either
-                      // one discards the other's draft.
-                      setDeclaring(false)
-                      setAdding(false)
-                      setEditing(open ? undefined : target)
-                    }}
-                  >
-                    {t('edit')}
-                  </button>
-                  {row.removable
-                    ? (
-                      <button
-                        type="button"
-                        className={styles['dangerButton']}
-                        aria-label={providerCopy(t('removeProvider'), target)}
-                        disabled={!state.writable}
-                        onClick={() => {
-                          setSavedTarget(undefined)
-                          setDeleteFailure(undefined)
-                          setDeleteTarget(target)
-                        }}
-                      >
-                        {t('remove')}
-                      </button>
-                    )
-                    : null}
-                </span>
+      <div className={styles['providerGroups']}>
+        <section className={`${styles['providerGroup']} ${styles['providerGroupCloud']}`} aria-labelledby="cloud-models-heading">
+          <div className={styles['providerGroupHeading']}>
+            <h3 id="cloud-models-heading" className={styles['providerGroupTitle']}>{t('cloudModels')}</h3>
+            <p className={styles['providerGroupDescription']}>{t('cloudModelsDescription')}</p>
+          </div>
+          <ProviderRows
+            rows={providerGroups.cloud}
+            schema={schema}
+            state={state}
+            anyUsable={anyUsable}
+            dismissedSetup={dismissedSetup}
+            adding={adding}
+            editing={editing}
+            api={api}
+            t={t}
+            onCloseSetup={closeSetup}
+            onEdit={(target, open) => {
+              setSavedTarget(undefined)
+              setDeclaring(false)
+              setAdding(false)
+              setEditing(open ? undefined : target)
+            }}
+            onCloseEditor={closeEditor}
+            onDelete={(target) => {
+              setSavedTarget(undefined)
+              setDeleteFailure(undefined)
+              setDeleteTarget(target)
+            }}
+          />
+        </section>
+        {providerGroups.ollama.length === 0
+          ? null
+          : (
+            <section className={`${styles['providerGroup']} ${styles['providerGroupOllama']}`} aria-labelledby="ollama-models-heading">
+              <div className={styles['providerGroupHeading']}>
+                <h3 id="ollama-models-heading" className={styles['providerGroupTitle']}>{t('ollamaModels')}</h3>
+                <p className={styles['providerGroupDescription']}>{t('ollamaModelsDescription')}</p>
               </div>
-              {open
-                ? renderProviderEditor({
-                  target,
-                  namespace,
-                  schema,
-                  api,
-                  t,
-                  readOnly: !state.writable,
-                  onClose: (changed) => { closeEditor(changed, target) },
-                })
-                : null}
-            </li>
-          )
-        })}
-      </ul>
+              <ProviderRows
+                rows={providerGroups.ollama}
+                schema={schema}
+                state={state}
+                anyUsable={anyUsable}
+                dismissedSetup={dismissedSetup}
+                adding={adding}
+                editing={editing}
+                api={api}
+                t={t}
+                onCloseSetup={closeSetup}
+                onEdit={(target, open) => {
+                  setSavedTarget(undefined)
+                  setDeclaring(false)
+                  setAdding(false)
+                  setEditing(open ? undefined : target)
+                }}
+                onCloseEditor={closeEditor}
+                onDelete={(target) => {
+                  setSavedTarget(undefined)
+                  setDeleteFailure(undefined)
+                  setDeleteTarget(target)
+                }}
+              />
+            </section>
+          )}
+      </div>
       <div className={styles['addBlock']}>
         {addTarget !== undefined && addNamespace !== undefined
           ? (
@@ -420,9 +398,7 @@ function Loaded({ injected }: { injected: ModelsSectionFace }): ReactNode {
                     setEditing(targetOf(row))
                   }}
                 >
-                  {addable.map(row => (
-                    <option key={row.entry.provider} value={row.entry.provider}>{row.entry.displayName}</option>
-                  ))}
+                  {addable.map(row => <option key={row.entry.provider} value={row.entry.provider}>{row.entry.displayName}</option>)}
                 </select>
               </div>
               <ProviderEditor
@@ -446,7 +422,6 @@ function Loaded({ injected }: { injected: ModelsSectionFace }): ReactNode {
                 <CustomProviderCard
                   taken={state.rows.map(row => row.entry.provider)}
                   protocols={protocols}
-                  /* v8 ignore next -- the card only opens from a button disabled without this namespace */
                   revision={state.namespaces.get('llm-pi-ai')?.revision ?? 0}
                   api={api}
                   t={t}
@@ -459,10 +434,6 @@ function Loaded({ injected }: { injected: ModelsSectionFace }): ReactNode {
               </div>
             )
             : (
-              // One row for the two ways to gain a provider: adopt one the
-              // adapter already knows, or declare one it does not. Side by side
-              // and equal-width so they read as siblings and line up with the
-              // rows above, rather than two pills of different lengths.
               <div className={styles['addActions']}>
                 <button
                   type="button"
@@ -478,7 +449,6 @@ function Loaded({ injected }: { injected: ModelsSectionFace }): ReactNode {
                     setEditing(targetOf(first))
                   }}
                 >
-                  {/* Same glyph as the composer's attach button. */}
                   <IconPlusOutline16 size={14} />
                   {t('add')}
                 </button>
@@ -515,18 +485,9 @@ function Loaded({ injected }: { injected: ModelsSectionFace }): ReactNode {
         className={styles['deleteDialog'] as string}
         footer={(
           <>
-            <Button variant="outline" autoFocus disabled={deleting} onClick={closeDelete}>
-              {t('cancel')}
-            </Button>
-            <Button
-              variant="outline"
-              className={styles['deleteConfirm']}
-              disabled={deleting}
-              onClick={confirmDelete}
-            >
-              {deleteTarget === undefined
-                ? ''
-                : providerCopy(deleting ? t('deleting') : t('deleteConfirm'), deleteTarget)}
+            <Button variant="outline" autoFocus disabled={deleting} onClick={closeDelete}>{t('cancel')}</Button>
+            <Button variant="outline" className={styles['deleteConfirm']} disabled={deleting} onClick={confirmDelete}>
+              {deleteTarget === undefined ? '' : providerCopy(deleting ? t('deleting') : t('deleteConfirm'), deleteTarget)}
             </Button>
           </>
         )}
@@ -534,5 +495,136 @@ function Loaded({ injected }: { injected: ModelsSectionFace }): ReactNode {
         {deleteFailure === undefined ? null : <p className={styles['error']}>{deleteFailure}</p>}
       </Modal>
     </div>
+  )
+}
+
+function ProviderRows({
+  rows,
+  schema,
+  state,
+  anyUsable,
+  dismissedSetup,
+  adding,
+  editing,
+  api,
+  t,
+  onCloseSetup,
+  onCloseEditor,
+  onEdit,
+  onDelete,
+}: {
+  rows: readonly ProviderRow[]
+  schema: SettingsSchemaOperations
+  state: ModelsSettingsState
+  anyUsable: boolean
+  dismissedSetup: ReadonlySet<string>
+  adding: boolean
+  editing: EditorTarget | undefined
+  api: ModelsSectionInjected['api']
+  t: ModelsSectionInjected['t']
+  onCloseSetup: (changed: boolean, target: EditorTarget) => void
+  onCloseEditor: (changed: boolean, target: EditorTarget) => void
+  onEdit: (target: EditorTarget, open: boolean) => void
+  onDelete: (target: EditorTarget) => void
+}): ReactNode {
+  return (
+    <ul className={styles['rows']}>
+      {rows.map((row) => {
+        const target = targetOf(row)
+        const namespace = state.namespaces.get(target.settingsNs)
+        /* v8 ignore next -- the join marks a row configured only when its namespace resolved */
+        if (namespace === undefined) return null
+        if (needsSetup(row, anyUsable) && !dismissedSetup.has(row.entry.provider)) {
+          // First-run posture: the provider exists but has no key — the
+          // setup card IS its presence on the page, until the user closes it.
+          return (
+            <li key={row.entry.provider} className={styles['setupCard']}>
+              {renderProviderEditor({
+                target,
+                namespace,
+                schema,
+                api,
+                t,
+                readOnly: !state.writable,
+                onClose: (changed) => { onCloseSetup(changed, target) },
+              })}
+            </li>
+          )
+        }
+        const open = !adding && editing?.provider === row.entry.provider
+        const credentialConfigured = row.credential?.configured === true
+        const credentialMissing = !credentialConfigured
+            && row.apiKeyEnv !== undefined
+            && row.credential?.configured === false
+        return (
+          <li key={row.entry.provider} className={styles['rowCard']}>
+            <div className={styles['rowHead']}>
+              <span className={styles['rowIdentity']}>
+                <span className={styles['rowName']}>{row.entry.displayName}</span>
+                {/* Only the adapter can tell a hand-declared route from a
+                      shipped one it also has a stored profile for, so the tag
+                      follows its answer and stays off when it gives none. */}
+                {row.entry.declared === true
+                  ? <span className={styles['rowTag']}>{t('customTag')}</span>
+                  : null}
+                {credentialConfigured
+                  ? (
+                    <span
+                      className={`${styles['credentialDot']} ${styles['credentialDotConfigured']}`}
+                      role="img"
+                      aria-label={t('credentialConfigured')}
+                      title={t('credentialConfigured')}
+                    />
+                  )
+                  : credentialMissing
+                    ? (
+                      <span
+                        className={`${styles['credentialDot']} ${styles['credentialDotMissing']}`}
+                        role="img"
+                        aria-label={t('credentialMissing')}
+                        title={t('credentialMissing')}
+                      />
+                    )
+                    : null}
+              </span>
+              <span className={styles['rowActions']}>
+                <button
+                  type="button"
+                  className={styles['secondaryButton']}
+                  aria-label={providerCopy(t('editProvider'), target)}
+                  onClick={() => { onEdit(target, open) }}
+                >
+                  {t('edit')}
+                </button>
+                {row.removable
+                  ? (
+                    <button
+                      type="button"
+                      className={styles['dangerButton']}
+                      aria-label={providerCopy(t('removeProvider'), target)}
+                      disabled={!state.writable}
+                      onClick={() => { onDelete(target) }}
+                    >
+                      {t('remove')}
+                    </button>
+                  )
+                  : null}
+              </span>
+            </div>
+            {open
+              ? renderProviderEditor({
+                target,
+                namespace,
+                schema,
+                api,
+                t,
+                readOnly: !state.writable,
+                onClose: (changed) => { onCloseEditor(changed, target) },
+              })
+              : null}
+          </li>
+        )
+      })}
+    </ul>
   )
 }

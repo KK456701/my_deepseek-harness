@@ -528,7 +528,7 @@ describe('SessionPersistenceSqlite schema ownership', () => {
 
     const foreignPath = await freshDbPath('dsh-sqlite-foreign-')
     const foreign = new DatabaseSync(foreignPath)
-    foreign.exec(testSql('set-user-version-17'))
+    foreign.exec(sql('set-user-version-18'))
     foreign.exec(testSql('set-application-id-12345'))
     foreign.close()
     await expect(openDatabase(DatabaseSync, foreignPath, 'wal', DEFAULT_BUSY_TIMEOUT_MS)).rejects.toThrow(/has application id 12345/)
@@ -578,7 +578,7 @@ describe('SessionPersistenceSqlite schema ownership', () => {
       cwd: '/project',
       parent_session: 'parent',
       seed_length: 4,
-      origin: 'subagent',
+      purpose: 'subagent',
       incarnation: '00000000-0000-4000-8000-000000000000',
       revision: 1,
       delegation_depth: 2,
@@ -588,12 +588,14 @@ describe('SessionPersistenceSqlite schema ownership', () => {
       cwd: '/project',
       parentSession: 'parent',
       seedLength: 4,
-      origin: 'subagent',
+      purpose: 'subagent',
       delegationDepth: 2,
       agentPreset: 'minimal',
     })
     expect(() => decodeSessionRow({ ...base, created_at: -1 })).toThrow(/created_at/)
-    expect(() => decodeSessionRow({ ...base, origin: 'external' })).toThrow(/origin/)
+    expect(() => decodeSessionRow({ ...base, purpose: 'external' })).toThrow(/purpose/)
+    expect(() => decodeSessionRow({ ...base, purpose: null })).toThrow(/purpose/)
+    expect(rowToMeta(decodeSessionRow({ ...base, purpose: 'maintenance' })).purpose).toBe('maintenance')
     expect(() => decodeSessionRow({ ...base, delegation_depth: -1 })).toThrow(/delegation_depth/)
   })
 
@@ -605,7 +607,7 @@ describe('SessionPersistenceSqlite schema ownership', () => {
       cwd: '/project',
       parent_session: null,
       seed_length: null,
-      origin: null,
+      purpose: 'interactive',
       incarnation: '00000000-0000-4000-8000-000000000000',
       revision: 1,
       delegation_depth: null,
@@ -651,8 +653,8 @@ describe('SessionPersistenceSqlite schema ownership', () => {
     const db = new DatabaseSync(path)
     db.prepare(testSql('update-invalid-session-metadata')).run(header.id)
     db.close()
-    await expect(store.list()).rejects.toThrow(/seed_length|origin|delegation_depth/)
-    await expect(store.loadStored(header.id)).rejects.toThrow(/seed_length|origin|delegation_depth/)
+    await expect(store.list()).rejects.toThrow(/seed_length|delegation_depth/)
+    await expect(store.loadStored(header.id)).rejects.toThrow(/seed_length|delegation_depth/)
     await store.close()
   })
 

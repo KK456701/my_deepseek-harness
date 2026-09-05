@@ -22,8 +22,8 @@ export interface SessionListEntry {
   /** Empty-log bit mirrored from the summary; lists hide blank sessions (filtering stays with the consumer). */
   blank: boolean
   parentSessionId?: SessionId
-  /** Coarse durable origin for navigation filtering; not a continuation capability. */
-  origin?: 'subagent'
+  /** Durable product role used for navigation filtering. */
+  purpose: 'interactive' | 'subagent' | 'maintenance'
   cwd?: string
   /** Agent preset the session's agent was composed from (summary passthrough). */
   agentPreset?: string

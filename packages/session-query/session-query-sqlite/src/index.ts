@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { Context, Service, type Fiber } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionHeader, SessionId, SessionPurpose } from '@deepseek-ai/dsh-session'
 import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
 import type {
   SessionPersistenceRevision,
@@ -167,6 +167,7 @@ interface SessionHeaderRow {
   cwd: string | null
   parent_session: string | null
   seed_length: number | null
+  purpose: SessionPurpose
   delegation_depth: number | null
   agent_preset: string | null
 }
@@ -574,8 +575,8 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const db = this._requireDb()
     db.prepare(`
       INSERT INTO persisted_sessions
-        (id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, revision, generation)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, version, created_at, cwd, parent_session, seed_length, purpose, delegation_depth, agent_preset, revision, generation)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       ...headerBindings(entry.header),
       revision,
@@ -604,8 +605,8 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const db = this._requireDb()
     db.prepare(`
       INSERT INTO temp.live_sessions
-        (id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, fingerprint, persisted, generation)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, version, created_at, cwd, parent_session, seed_length, purpose, delegation_depth, agent_preset, fingerprint, persisted, generation)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       ...headerBindings(entry.header),
       entry.fingerprint,
@@ -702,7 +703,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const db = this._requireDb()
     const live = db.prepare(
       `SELECT
-        id AS session_id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, generation
+        id AS session_id, version, created_at, cwd, parent_session, seed_length, purpose, delegation_depth, agent_preset, generation
       FROM temp.live_sessions
       WHERE id = ?`,
     ).get(sessionId) as (SessionHeaderRow & { generation: number }) | undefined
@@ -712,7 +713,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     if (persistenceBinding.service !== undefined) {
       const persisted = db.prepare(
         `SELECT
-          id AS session_id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, generation
+          id AS session_id, version, created_at, cwd, parent_session, seed_length, purpose, delegation_depth, agent_preset, generation
         FROM persisted_sessions
         WHERE id = ?`,
       ).get(sessionId) as (SessionHeaderRow & { generation: number }) | undefined
@@ -774,6 +775,7 @@ function headerBindings(header: SessionHeader): (string | number | null)[] {
     header.cwd ?? null,
     header.parentSession ?? null,
     header.seedLength ?? null,
+    header.purpose,
     header.delegationDepth ?? null,
     header.agentPreset ?? null,
   ]
@@ -789,6 +791,7 @@ function selectedDocumentsSql(): { sql: string } {
         ps.cwd AS cwd,
         ps.parent_session AS parent_session,
         ps.seed_length AS seed_length,
+        ps.purpose AS purpose,
         ps.delegation_depth AS delegation_depth,
         ps.agent_preset AS agent_preset,
         0 AS live,
@@ -812,6 +815,7 @@ function selectedDocumentsSql(): { sql: string } {
         ls.cwd AS cwd,
         ls.parent_session AS parent_session,
         ls.seed_length AS seed_length,
+        ls.purpose AS purpose,
         ls.delegation_depth AS delegation_depth,
         ls.agent_preset AS agent_preset,
         1 AS live,
@@ -921,6 +925,7 @@ function sameHeader(a: SessionHeader, b: SessionHeader): boolean {
     && a.cwd === b.cwd
     && a.parentSession === b.parentSession
     && a.seedLength === b.seedLength
+    && a.purpose === b.purpose
     && (a.delegationDepth ?? 0) === (b.delegationDepth ?? 0)
     && a.agentPreset === b.agentPreset
 }
@@ -930,6 +935,7 @@ function rowHeader(row: SessionHeaderRow): SessionHeader {
     version: row.version,
     id: row.session_id as SessionId,
     createdAt: row.created_at,
+    purpose: row.purpose,
     ...row.cwd === null ? {} : { cwd: row.cwd },
     ...row.parent_session === null ? {} : { parentSession: row.parent_session as SessionId },
     ...row.seed_length === null ? {} : { seedLength: row.seed_length },

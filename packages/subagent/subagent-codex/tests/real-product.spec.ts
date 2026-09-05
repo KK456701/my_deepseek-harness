@@ -216,6 +216,21 @@ function responseInputTexts(body: Record<string, unknown>): string[] {
 }
 
 describe('real @openai/codex 0.147.0 product', () => {
+  it('dispatches a structured call through the real app-server without changing its config', async () => {
+    const { harness, fixture } = await realHarness([{ kind: 'complete', text: '{"useful":false}' }])
+    const before = readFileSync(join(harness.env.CODEX_HOME!, 'config.toml'), 'utf8')
+    const prepared = await harness.ctx.codexStructuredRunner.prepareCall({
+      purpose: 'memory-phase1', model: 'gpt-5.6-sol', reasoningEffort: 'high', prompt: 'No reusable evidence.', maxResultBytes: 4096,
+      outputSchema: { type: 'object', additionalProperties: false, properties: { useful: { type: 'boolean' } }, required: ['useful'] },
+    }, AbortSignal.timeout(45_000))
+    expect(fixture.requests).toHaveLength(0)
+    const result = await prepared.dispatch(AbortSignal.timeout(45_000))
+    expect(result).toMatchObject({ value: { useful: false }, finishReason: 'completed' })
+    expect(fixture.requests[0]?.body).toMatchObject({ model: 'gpt-5.6-sol', reasoning: { effort: 'high' }, text: { format: { type: 'json_schema' } } })
+    expect(readFileSync(join(harness.env.CODEX_HOME!, 'config.toml'), 'utf8')).toBe(before)
+    await prepared.dispose()
+    await expectQuiescent(harness.handles)
+  }, 60_000)
   it('starts approve-for-me through the real app-server and returns exact text', async () => {
     const sentinel = 'REAL_CODEX_SENTINEL_0_147_0'
     const task = 'Return the fixture sentinel exactly.'

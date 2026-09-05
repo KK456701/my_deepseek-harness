@@ -65,6 +65,14 @@ async function listBlank(api: ApiProxy, id: string): Promise<boolean | undefined
 }
 
 describe('summary blank = conversation not started', () => {
+  it('keeps explicitly retained audit records visible without a Worker turn', async () => {
+    const { ctx, api, attach } = await harness()
+    const session = ctx.sessions.create()
+    attach(session)
+    session.append('session/retained', { reason: 'reviewer-screening' })
+    expect(await listBlank(api, session.id)).toBe(false)
+    expect(session.events.some(event => event.type === 'turn/start' || event.type === 'user/message')).toBe(false)
+  })
   it('standalone events (command lifecycle, plan/mode, title) keep the session blank', async () => {
     const { ctx, api, attach } = await harness()
     const session = ctx.sessions.create()

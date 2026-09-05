@@ -6,9 +6,14 @@ export type Behavior =
   | { kind: 'sse'; events: string[]; delayMs?: number }
   | { kind: 'http-error'; status: number; body: string; contentType?: string; headers?: Record<string, string> }
   | { kind: 'close-early'; events: string[] }
+  | { kind: 'json'; status?: number; body: unknown }
 
 export interface MockServer {
   url: string
+  /** HTTP methods of received requests, in order. */
+  methods: Array<string | undefined>
+  /** Request paths, in order. */
+  paths: Array<string | undefined>
   /** Bodies of received requests, in order. */
   requests: unknown[]
   /** Header bags of received requests, in order (parallel to `requests`). */
@@ -34,17 +39,27 @@ export const textEvents = [
 
 /** Local chat-completions stand-in: replays scripted behaviors per request. */
 export async function mockServer(script: Behavior[]): Promise<MockServer> {
+  const methods: Array<string | undefined> = []
+  const paths: Array<string | undefined> = []
   const requests: unknown[] = []
   const headers: IncomingMessage['headers'][] = []
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     let body = ''
     request.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
     request.on('end', () => {
-      requests.push(JSON.parse(body))
+      methods.push(request.method)
+      paths.push(request.url)
+      // GET requests carry no JSON body; the empty string is the sentinel.
+      requests.push(request.method === 'GET' && body === '' ? null : JSON.parse(body))
       headers.push(request.headers)
       const behavior = script.shift()
       if (!behavior) {
         response.writeHead(500).end('mock script exhausted')
+        return
+      }
+      if (behavior.kind === 'json') {
+        response.writeHead(behavior.status ?? 200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify(behavior.body))
         return
       }
       if (behavior.kind === 'http-error') {
@@ -74,6 +89,8 @@ export async function mockServer(script: Behavior[]): Promise<MockServer> {
   if (address === null || typeof address === 'string') throw new Error('no port')
   return {
     url: `http://127.0.0.1:${address.port}`,
+    methods,
+    paths,
     requests,
     headers,
     script,

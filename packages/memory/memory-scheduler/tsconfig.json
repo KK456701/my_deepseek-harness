@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
+  "include": ["src"],
+  "references": [
+    { "path": "../../subagent/codex-structured-runner" },
+    { "path": "../../../vendor/cosmokit" }, { "path": "../../../vendor/cordis" },
+    { "path": "../../runtime-diagnostics/invariants" }, { "path": "../../core/agent" },
+    { "path": "../../core/session" }, { "path": "../../core/tools" },
+    { "path": "../../jobs/jobs" },
+    { "path": "../../llm/llm" }, { "path": "../../session/session-persistence" },
+    { "path": "../../fs/tool-fs" }, { "path": "../memory-maintenance" },
+    { "path": "../memory-pipeline-store" }, { "path": "../memory-staging-tools" }
+  ]
+}
