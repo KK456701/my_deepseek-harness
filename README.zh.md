@@ -15,7 +15,45 @@
 
 写入侧采用异步 **Extraction → Consolidation** 两阶段流水线；读取侧采用 **摘要注入 + Agentic RAG**，不把完整历史会话塞入每次请求。
 
-![长期记忆架构：历史会话经证据提取、跨会话归并与校验发布，生成摘要、详细记忆和 Skill，再由主 Agent 按需读取](docs/assets/memory-pipeline.svg)
+```mermaid
+flowchart TB
+    H["合格历史会话"] --> F["程序：冻结、脱敏、去重"]
+    F --> P1["Phase 1 · Extraction<br/>模型提取任务证据与摘要"]
+    P1 --> S["程序：按采用次数与时效<br/>选择 Top-N 自动来源"]
+    S --> P2["Phase 2 · Consolidation<br/>模型归并偏好、保留冲突、整理 Skill"]
+    N["显式记忆请求"] --> NOTE["程序持久化 note<br/>跳过 Phase 1，等待归并"]
+    NOTE --> P2
+    OLD["已有记忆与来源变化"] -.-> P2
+    P2 --> V["程序校验<br/>引用、脱敏、格式、容量、发布版本"]
+    V --> STORE["发布不可变记忆版本<br/>摘要 / 详细记忆 / Skill"]
+    classDef native fill:#f1f5f9,stroke:#64748b,color:#17283e
+    classDef model fill:#eaf2ff,stroke:#3974c8,color:#17283e
+    classDef runtime fill:#e9f7f1,stroke:#32836b,color:#17283e
+    classDef storage fill:#f3edff,stroke:#8956c6,color:#17283e
+    class H,N native
+    class P1,P2 model
+    class F,S,NOTE,V runtime
+    class OLD,STORE storage
+```
+
+Scheduler 在后台协调来源发现、两阶段处理与重试。显式 note 单独参与归并，不被自动来源的 Top-N 排名挤掉。
+
+```mermaid
+flowchart TB
+    U["当前用户消息与对话"] --> A["程序组装请求<br/>启用读取时注入已有的有界摘要"]
+    A --> W["主 Agent 理解任务并规划"]
+    W --> D{"需要详细记忆？"}
+    D -->|否| RUN["主 Agent 继续回答或执行"]
+    D -->|是| SEARCH["memory_search：关键词定位"]
+    SEARCH --> DETAIL["memory_read：读取所需正文"]
+    DETAIL --> RUN
+    classDef native fill:#f1f5f9,stroke:#64748b,color:#17283e
+    classDef model fill:#eaf2ff,stroke:#3974c8,color:#17283e
+    classDef runtime fill:#e9f7f1,stroke:#32836b,color:#17283e
+    classDef storage fill:#f3edff,stroke:#8956c6,color:#17283e
+    class U,W,D,RUN native
+    class A,SEARCH,DETAIL runtime
+```
 
 ### 写入：先保留证据，再决定沉淀什么
 
@@ -39,7 +77,55 @@
 
 不替换主 Agent 的规划与工具执行循环，而是在输入、执行过程和正式交付三个位置增加辅助判断。**模型负责理解语义，程序负责版本、引用与执行控制。**
 
-![长任务治理架构：灰色为原生 Agent Loop，蓝色为 Parser、Observer、Reviewer，绿色为需求账本、快照与执行控制](docs/assets/long-task-governance.svg)
+```mermaid
+flowchart TB
+    U["真实用户消息 / 中途反馈"] --> P["Parser · 意图保持<br/>提出 add / revise / cancel"]
+    P --> L["程序校验来源与版本<br/>更新需求账本"]
+    L --> S["精简任务快照<br/>待完成 / 已完成 / 已取消"]
+    PLAN["正式批准计划"] -.-> S
+    COMPACT["原生自动压缩"] -->|快照被遮蔽后恢复| S
+    S -. 下一次请求 .-> W["Worker / 主 Agent"]
+
+    W -->|调用工具| GUARD["插话屏障与重复 Guard<br/>原有沙箱与审批仍生效"]
+    GUARD --> T["真实工具执行与结果"]
+    T --> CHECK{"异常信号或时间窗触发？"}
+    CHECK -->|否| NEXT["返回 Worker 继续执行"]
+    CHECK -->|是| O["Observer · 过程纠偏<br/>按需查证进展与风险"]
+    O -->|有进展且无风险| NEXT
+    O -->|不确定且无风险| RETRY["按窗口规则继续与复查"]
+    O -->|无进展 / 风险 / 达到暂停条件| HOLD["程序阻止后续任务工具启动"]
+    HOLD --> REPLAN["主 Agent 重新规划<br/>满足审批及解除暂停条件后恢复"]
+
+    W -->|尝试终结交付| R["Reviewer · 交付验收<br/>进入下图审查与分流"]
+    classDef native fill:#f1f5f9,stroke:#64748b,color:#17283e
+    classDef model fill:#eaf2ff,stroke:#3974c8,color:#17283e
+    classDef runtime fill:#e9f7f1,stroke:#32836b,color:#17283e
+    classDef storage fill:#f3edff,stroke:#8956c6,color:#17283e
+    class U,PLAN,COMPACT,W,T,NEXT,REPLAN native
+    class P,O,R model
+    class L,S,GUARD,CHECK,RETRY,HOLD runtime
+```
+
+执行循环图中的“返回 Worker”和“恢复”均指向同一个主 Agent，不增加模型角色。交付审查单独展开如下：
+
+```mermaid
+flowchart LR
+    C["Worker 生成终结候选<br/>尚未正式提交"] --> R["Reviewer · 交付验收"]
+    E["有效需求、适用计划、真实结果<br/>冻结 Session 范围内按需查证"] -.-> R
+    R --> G["程序校验<br/>版本、引用、新鲜度与分流规则"]
+    G --> DONE["验收通过<br/>正式交付并登记完成证据"]
+    G --> RW["只漏说明<br/>Worker 受限改写后再审<br/>禁止任务工具"]
+    G --> VERIFY["完成情况不确定<br/>先核验，取得新证据后再审<br/>不自动重做"]
+    G --> FIX["明确缺工作或产物错误<br/>按原授权补做或修正后再审"]
+    G --> STOP["应暂停或真实阻塞<br/>提交适用说明，保留未完成需求"]
+    classDef native fill:#f1f5f9,stroke:#64748b,color:#17283e
+    classDef model fill:#eaf2ff,stroke:#3974c8,color:#17283e
+    classDef runtime fill:#e9f7f1,stroke:#32836b,color:#17283e
+    classDef storage fill:#f3edff,stroke:#8956c6,color:#17283e
+    class C,DONE,STOP native
+    class R model
+    class E,G,RW,VERIFY,FIX runtime
+```
 
 灰色表示原生主 Agent、沙箱审批、工具执行与压缩能力；蓝色表示三个新增辅助模型节点；绿色表示不调用模型的状态管理与执行控制。虚线表示状态或证据输入，实线表示执行流。
 
